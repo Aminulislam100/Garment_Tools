@@ -354,29 +354,36 @@ if app_mode == "🧵 Fabric Vision AI":
                             st.image(cv2.cvtColor(cv2.imread(best_match_path), cv2.COLOR_BGR2RGB), caption=f"ম্যাচিং মাস্টার: {best_match_name}", use_container_width=True)
 
 # ==========================================
-# পেজ ২: DXF Converter
+# পেজ ২: DXF Converter (With Live Camera Tabs)
 # ==========================================
 elif app_mode == "📐 DXF Converter":
     
-    # সাব-মেনু (শুধুমাত্র DXF পেজ সিলেক্ট করলে দেখাবে)
     st.sidebar.markdown("### 📐 DXF Options")
     dxf_page = st.sidebar.radio("আপনার প্রয়োজনীয় টুলটি বেছে নিন:", ["Convert Clear Photo", "Process Photo and Convert"])
-    st.sidebar.info("১. **Convert Clear Photo:** শুধু পরিষ্কার ছবির জন্য দ্রুত কনভার্টার।\n২. **Process Photo:** অস্পষ্ট ছবির ব্যাকগ্রাউন্ড রিমুভ ও লাইন শার্প করার অ্যাডভান্সড টুল।")
 
     if dxf_page == "Convert Clear Photo":
-        st.title("📐 Convert Clear Photo")
-        st.write("আপনার জ্যামিতিক বা টাইলসের পরিষ্কার ছবি আপলোড করুন, এক ক্লিকে DXF ডাউনলোড করুন।")
+        st.markdown("## 📐 Convert Clear Photo")
+        st.write("আপনার জ্যামিতিক বা টাইলসের পরিষ্কার ছবি দিন, এক ক্লিকে DXF ডাউনলোড করুন।")
 
-        uploaded_file = st.file_uploader("একটি ছবি বাছাই করুন", type=["jpg", "jpeg", "png", "bmp"], key="page1_uploader")
+        # Tabs for clear separation of Input modes
+        dxf_tab1, dxf_tab2 = st.tabs(["📁 ফাইল আপলোড", "📸 লাইভ ক্যামেরা"])
+        
+        with dxf_tab1:
+            dxf_file = st.file_uploader("একটি ছবি বাছাই করুন", type=["jpg", "jpeg", "png", "bmp"], key="dxf_up1")
+        with dxf_tab2:
+            dxf_cam = st.camera_input("ক্যামেরা দিয়ে ছবি তুলুন", key="dxf_cam1")
 
-        if uploaded_file is not None:
-            file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
+        # Process whichever is provided
+        uploaded_dxf = dxf_file if dxf_file else dxf_cam
+
+        if uploaded_dxf is not None:
+            file_bytes = np.asarray(bytearray(uploaded_dxf.read()), dtype=np.uint8)
             img = cv2.imdecode(file_bytes, cv2.IMREAD_GRAYSCALE)
 
             if img is not None:
-                st.image(img, caption="আপলোড করা ছবি", width=300)
+                st.image(img, caption="ইনপুট করা ছবি", width=300)
 
-                if st.button("⚡ DXF ফাইলে কনভার্ট করুন", key="btn1"):
+                if st.button("⚡ DXF ফাইলে কনভার্ট করুন", key="btn1", type="primary"):
                     with st.spinner("প্রসেসিং হচ্ছে, অনুগ্রহ করে অপেক্ষা করুন..."):
                         _, thresh = cv2.threshold(img, 127, 255, cv2.THRESH_BINARY_INV)
                         contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
@@ -389,7 +396,8 @@ elif app_mode == "📐 DXF Converter":
                                 points = [(float(pt[0][0]), float(pt[0][1])) for pt in cnt]
                                 msp.add_lwpolyline(points, close=True)
 
-                        output_filename = f"{os.path.splitext(uploaded_file.name)[0]}.dxf"
+                        file_prefix = uploaded_dxf.name.split('.')[0] if hasattr(uploaded_dxf, 'name') else "Camera_Input"
+                        output_filename = f"{file_prefix}.dxf"
                         doc.saveas(output_filename)
 
                         with open(output_filename, "rb") as file:
@@ -403,23 +411,28 @@ elif app_mode == "📐 DXF Converter":
                             )
 
     elif dxf_page == "Process Photo and Convert":
-        st.title("⚙️ Process Photo and Convert")
+        st.markdown("## ⚙️ Process Photo and Convert")
         st.write("এই টুলটি স্বয়ংক্রিয়ভাবে ব্যাকগ্রাউন্ড রিমুভ, অটো কন্ট্রাস্ট এবং শার্প করে নিখুঁত DXF তৈরি করবে।")
 
-        uploaded_file = st.file_uploader("একটি ছবি বাছাই করুন", type=["jpg", "jpeg", "png", "bmp"], key="page2_uploader")
+        dxf_ptab1, dxf_ptab2 = st.tabs(["📁 ফাইল আপলোড", "📸 লাইভ ক্যামেরা"])
+        
+        with dxf_ptab1:
+            dxf_pfile = st.file_uploader("একটি ছবি বাছাই করুন", type=["jpg", "jpeg", "png", "bmp"], key="dxf_up2")
+        with dxf_ptab2:
+            dxf_pcam = st.camera_input("ক্যামেরা দিয়ে ছবি তুলুন", key="dxf_cam2")
 
-        if uploaded_file is not None:
-            input_image = Image.open(uploaded_file)
+        uploaded_dxf_p = dxf_pfile if dxf_pfile else dxf_pcam
+
+        if uploaded_dxf_p is not None:
+            input_image = Image.open(uploaded_dxf_p)
             st.image(input_image, caption="অরিজিনাল ছবি", width=300)
 
-            if st.button("⚡ প্রসেস ও DXF ফাইলে কনভার্ট করুন", key="btn2"):
+            if st.button("⚡ প্রসেস ও DXF ফাইলে কনভার্ট করুন", key="btn2", type="primary"):
                 with st.spinner("অ্যাডভান্সড প্রসেসিং হচ্ছে (ব্যাকগ্রাউন্ড রিমুভ ও শার্পেন)... দয়া করে অপেক্ষা করুন।"):
                     try:
-                        # ১. AI দিয়ে ব্যাকগ্রাউন্ড রিমুভ করা
                         img_no_bg = remove(input_image)
                         img_array = np.array(img_no_bg)
                         
-                        # ২. ট্রান্সপারেন্ট ব্যাকগ্রাউন্ডকে সাদা করা (যাতে লাইন কালো হয়)
                         if img_array.shape[2] == 4:
                             alpha_channel = img_array[:, :, 3]
                             rgb_channels = img_array[:, :, :3]
@@ -431,37 +444,28 @@ elif app_mode == "📐 DXF Converter":
                         else:
                             img_rgb = img_array
 
-                        # ৩. গ্রেস্কেল (সাদাকালো) রূপান্তর
                         gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
-
-                        # ৪. অটো কন্ট্রাস্ট (CLAHE) - হালকা লাইন স্পষ্ট করার জন্য
                         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
                         enhanced_gray = clahe.apply(gray)
 
-                        # ৫. শার্পেনিং (Sharpening Filter) - ব্লার বা ঝাপসা কমানোর জন্য
-                        kernel = np.array([[-1, -1, -1],
-                                           [-1,  9, -1],
-                                           [-1, -1, -1]])
+                        kernel = np.array([[-1, -1, -1], [-1,  9, -1], [-1, -1, -1]])
                         sharpened = cv2.filter2D(enhanced_gray, -1, kernel)
                         
                         st.image(sharpened, caption="ক্লিন ও শার্প করা ছবি (ট্রেসিংয়ের জন্য প্রস্তুত)", width=300)
 
-                        # ৬. ট্রেসিং (Thresholding & Contours)
                         _, thresh = cv2.threshold(sharpened, 127, 255, cv2.THRESH_BINARY_INV)
                         contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
-                        # ৭. DXF ফাইল তৈরি
                         doc = ezdxf.new(dxfversion='R2010')
                         msp = doc.modelspace()
 
                         for cnt in contours:
-                            # অতিরিক্ত ছোট নয়েজ বা ডট বাদ দেওয়া
                             if cv2.contourArea(cnt) > 10: 
                                 points = [(float(pt[0][0]), float(pt[0][1])) for pt in cnt]
                                 msp.add_lwpolyline(points, close=True)
 
-                        # ৮. আউটপুট ফাইল সেভ ও ডাউনলোড
-                        output_filename = f"{os.path.splitext(uploaded_file.name)[0]}_Processed.dxf"
+                        file_prefix = uploaded_dxf_p.name.split('.')[0] if hasattr(uploaded_dxf_p, 'name') else "Camera_Processed"
+                        output_filename = f"{file_prefix}_Advanced.dxf"
                         doc.saveas(output_filename)
 
                         with open(output_filename, "rb") as file:
