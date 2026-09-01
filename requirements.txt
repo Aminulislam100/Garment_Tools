@@ -1,0 +1,9 @@
+streamlit
+opencv-python-headless
+numpy
+pillow
+torch
+torchvision
+ezdxf
+rembg
+onnxruntime
