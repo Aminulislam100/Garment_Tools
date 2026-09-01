@@ -11,9 +11,56 @@ import torchvision.models as models
 import torchvision.transforms as transforms
 
 # ==========================================
-# গ্লোবাল পেজ কনফিগারেশন (অবশ্যই সবার আগে থাকতে হবে)
+# গ্লোবাল পেজ কনফিগারেশন
 # ==========================================
 st.set_page_config(page_title="AI Smart Suite", layout="wide", page_icon="🚀")
+
+# ==========================================
+# Top Navigation Bar Styling (CSS & UI)
+# ==========================================
+st.markdown("""
+<style>
+/* Top Nav Bar Styling */
+.stRadio > div[role="radiogroup"] {
+    display: flex;
+    justify-content: center;
+    background: #0f172a;
+    padding: 10px;
+    border-radius: 12px;
+    gap: 15px;
+    margin-bottom: 25px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+}
+.stRadio > div[role="radiogroup"] > label {
+    background-color: #1e293b;
+    color: #f8fafc !important;
+    padding: 10px 24px !important;
+    border-radius: 8px !important;
+    border: 1px solid #334155 !important;
+    font-weight: 600 !important;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+.stRadio > div[role="radiogroup"] > label:hover {
+    background-color: #334155;
+    border-color: #3b82f6 !important;
+}
+.stRadio > div[role="radiogroup"] > label[data-checked="true"] {
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
+    color: white !important;
+    border-color: #60a5fa !important;
+    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.4);
+}
+</style>
+""", unsafe_allow_html=True)
+
+# Top Navbar Menu
+app_mode = st.radio(
+    "Main Navigation",
+    ["🧵 Fabric Vision AI", "📐 DXF Converter"],
+    horizontal=True,
+    label_visibility="collapsed"
+)
 
 # ==========================================
 # গ্লোবাল ফাংশনসমূহ (Fabric Vision AI এর জন্য)
@@ -89,17 +136,6 @@ def load_cached_benchmarks(file_list, bench_dir):
             data.append((b_file, b_path, lab_hist, embedding, lap_var, edge_density))
     return data
 
-
-# ==========================================
-# মূল সাইডবার নেভিগেশন
-# ==========================================
-st.sidebar.title("🎛️ Main Menu")
-app_mode = st.sidebar.radio(
-    "আপনার প্রোজেক্ট নির্বাচন করুন:",
-    ["🧵 Fabric Vision AI", "📐 DXF Converter"]
-)
-st.sidebar.markdown("---")
-
 # ==========================================
 # পেজ ১: Fabric Vision AI
 # ==========================================
@@ -134,7 +170,7 @@ if app_mode == "🧵 Fabric Vision AI":
     if 'cam_key' not in st.session_state:
         st.session_state.cam_key = 0
 
-    st.sidebar.header("⚙️ Settings & Hybrid Modes")
+    st.sidebar.header("⚙️ Fabric Vision Settings")
     inspection_mode = st.sidebar.selectbox(
         "🔍 ইনস্পেকশন মোড বেছে নিন",
         (
@@ -146,7 +182,6 @@ if app_mode == "🧵 Fabric Vision AI":
         )
     )
     pass_threshold = st.sidebar.slider("Minimum Match Score (%)", 50.0, 99.0, 78.0, 1.0)
-    st.sidebar.info("💡 **টিপস:** ভেক্টরাইজেশন ব্যবহারের ফলে কাপড়ে হালকা ভাঁজ বা ক্যামেরা সামান্য বাঁকা থাকলেও নিখুঁত রেজাল্ট আসবে।")
 
     st.markdown("""
     <div style="background: linear-gradient(135deg, #c2410c 0%, #ea580c 100%); padding: 16px 22px; border-radius: 14px 14px 0 0; color: white; font-weight: bold; font-size: 18px; box-shadow: 0 6px 15px rgba(194,65,12,0.35); border: 6px solid #c2410c; border-bottom: none;">
@@ -317,7 +352,6 @@ if app_mode == "🧵 Fabric Vision AI":
                     with v_col2:
                         if best_match_path:
                             st.image(cv2.cvtColor(cv2.imread(best_match_path), cv2.COLOR_BGR2RGB), caption=f"ম্যাচিং মাস্টার: {best_match_name}", use_container_width=True)
-
 
 # ==========================================
 # পেজ ২: DXF Converter
