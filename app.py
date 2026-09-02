@@ -394,12 +394,8 @@ elif app_mode == "📐 Auto DXF Converter":
 
             if st.button("⚡ DXF ফাইলে কনভার্ট করুন"):
                 with st.spinner("প্রসেসিং হচ্ছে..."):
-                    # নয়েজ কমানোর জন্য ব্লার
-                    blurred = cv2.GaussianBlur(img, (5, 5), 0)
-                    # Canny Edge Detection (যা শুধু আউটলাইন ধরবে)
-                    edges = cv2.Canny(blurred, 50, 150)
-                    # RETR_EXTERNAL ব্যবহার করলে ভেতরের অপ্রয়োজনীয় ছোট নয়েজ বাদ যাবে
-                    cnts = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                    _, thresh = cv2.threshold(img, 127, 255, cv2.THRESH_BINARY_INV)
+                    cnts = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
                     contours = cnts[0] if len(cnts) == 2 else cnts[1]
 
                     doc = ezdxf.new(dxfversion="R2010")
@@ -416,11 +412,126 @@ elif app_mode == "📐 Auto DXF Converter":
                                 msp.add_spline(points)
                             elif len(points) >= 2:
                                 pts_2d = [(p[0], p[1]) for p in points]
-                                msp.add### The Issue: Accidental Copy-Paste
+                                msp.add_lwpolyline(pts_2d, close=True)
 
-The error you are seeing—`SyntaxError: invalid character '।' (U+0964)`—is happening because a conversational Bengali sentence accidentally got pasted directly into your Python script, `app.py`. 
+                    file_base_name = getattr(uploaded_file, 'name', 'Snapshot.jpg')
+                    output_filename = f"{os.path.splitext(file_base_name)[0]}.dxf"
+                    doc.saveas(output_filename)
 
-If you look closely at the error output for line 290, you can see the mix-up:
+                    with open(output_filename, "rb") as file:
+                        st.download_button("📥 DXF ফাইল ডাউনলোড করুন", data=file, file_name=output_filename, mime="application/dxf")
 
-```python
-for i, file in enumerate(newআপনার দেওয়া ইনস্ট্রাকশন অনুযায়ী আমি আগের সেই সাধারণ থ্রেশহোল্ড (Threshold) লজিকের জায়গায় নতুন **Canny Edge Detection**-এর লজিকটি বসিয়ে পুরো কোডটি আপডেট করে দিয়েছি।
+    elif page == "Process Photo and Convert":
+        st.title("⚙️ Process Photo and Convert (Pixlr Enhanced Edge Detection)")
+        tab1, tab2 = st.tabs(["📁 ফাইল আপলোড", "📸 লাইভ ক্যামেরা"])
+        uploaded_file = None
+        
+        with tab1:
+            up_file = st.file_uploader("ছবি বাছাই করুন", type=["jpg", "jpeg", "png"], key="dxf_up2")
+            if up_file: uploaded_file = up_file
+        with tab2:
+            cam_file = st.camera_input("ক্যামেরা দিয়ে ছবি তুলুন", key="dxf_cam2")
+            if cam_file: uploaded_file = cam_file
+
+        if uploaded_file is not None:
+            file_id = getattr(uploaded_file, 'name', 'camera') + str(getattr(uploaded_file, 'size', 0))
+            if st.session_state.get("current_file_id") != file_id:
+                st.session_state["current_file_id"] = file_id
+                st.session_state["clean_rgb"] = None
+
+            uploaded_file.seek(0)
+            input_image = Image.open(uploaded_file)
+            
+            col_p1, col_p2 = st.columns(2)
+            with col_p1:
+                st.image(input_image, caption="অরিজিনাল ইনপুট ছবি", use_container_width=True)
+
+            st.markdown("---")
+            
+            # Step 1: Background removal
+            if st.session_state.get("clean_rgb") is None:
+                if st.button("✨ ১. ব্যাকগ্রাউন্ড রিমুভ ও ক্লিন করুন", type="primary"):
+                    with st.spinner("অ্যাডভান্সড প্রসেসিং চলছে..."):
+                        clean_rgb, status = process_base_image(input_image)
+                        if clean_rgb is not None:
+                            st.session_state["clean_rgb"] = clean_rgb
+                            st.rerun()
+                        else:
+                            st.error(f"❌ প্রসেসিং ক্র্যাশ করেছে! কারণ: {status}")
+            else:
+                st.success("✅ ছবি প্রসেস হয়ে গেছে! এবার নিচের Pixlr অপশন ও স্লাইডার দিয়ে ডিজাইন বা অবজেক্টের আউটলাইন পারফেক্ট করুন।")
+                
+                # Pixlr Style Image Enhancements Controls
+                st.markdown("### 🎨 Pixlr স্টাইল ফটো এনহ্যান্সমেন্ট")
+                p_col1, p_col2, p_col3 = st.columns(3)
+                with p_col1:
+                    chk_autofix = st.checkbox("🪄 AutoFix (Auto Lighting)", value=True)
+                with p_col2:
+                    chk_autocontrast = st.checkbox("🌓 Auto Contrast (Boost Details)", value=True)
+                with p_col3:
+                    slider_sharpen = st.slider("🔪 Sharpen Amount (%)", min_value=0, max_value=100, value=100, step=10)
+
+                # Enhance image using Pixlr logic
+                enhanced_base = apply_pixlr_enhancements(
+                    st.session_state["clean_rgb"],
+                    do_auto_contrast=chk_autocontrast,
+                    sharpen_pct=slider_sharpen,
+                    do_autofix=chk_autofix
+                )
+
+                st.markdown("### 🎛️ লাইভ লাইন কন্ট্রোলার")
+                
+                col_slider1, col_slider2 = st.columns(2)
+                with col_slider1:
+                    edge_sens = st.slider(
+                        "🔍 প্যাটার্ন ও অবজেক্ট ডিটেইলস (Sensitivity)", 
+                        min_value=0, 
+                        max_value=100, 
+                        value=100, 
+                        step=1,
+                        help="১০০ তে রাখলে যেকোনো ডিজাইন, প্যাটার্ন বা অবজেক্টের সূক্ষ্ম আউটলাইন ডিটেক্ট করবে।"
+                    )
+                    min_len = st.slider(
+                        "✂️ ছোট দাগ মুছুন (Noise Remove)", 
+                        min_value=5, 
+                        max_value=100, 
+                        value=15, 
+                        step=1,
+                        help="ছোট অবাঞ্ছিত দাগ মুছতে ব্যবহার করুন।"
+                    )
+                with col_slider2:
+                    smooth_val = st.slider(
+                        "〰️ লাইন স্মুথনেস (Curve Fitting)", 
+                        min_value=0.0000, 
+                        max_value=0.0050, 
+                        value=0.0005, 
+                        step=0.0001, 
+                        format="%.4f",
+                        help="০.০০০৫ তে রাখলে অবজেক্ট বা ডিজাইনের মূল কার্ভ শেপ সঠিক থাকবে।"
+                    )
+
+                # Process contours live
+                preview_img, final_contours = extract_and_draw_lines_live(
+                    enhanced_base, 
+                    edge_sensitivity=edge_sens, 
+                    smoothness=smooth_val, 
+                    min_line_length=min_len
+                )
+
+                with col_p2:
+                    st.image(preview_img, caption="লাইভ ট্রেসিং ভিউ (Pixlr Enhanced Lines)", use_container_width=True)
+
+                st.markdown("---")
+                if st.button("📐 ২. স্মুথ DXF ফাইলে কনভার্ট করুন", type="primary"):
+                    with st.spinner("৩D অ্যাপের উপযোগী স্মুথ DXF তৈরি হচ্ছে..."):
+                        file_base_name = getattr(uploaded_file, 'name', 'Snapshot.jpg')
+                        output_filename = f"Pixlr_Smooth_{os.path.splitext(file_base_name)[0]}.dxf"
+                        
+                        valid_lines = export_smooth_dxf(final_contours, output_filename)
+
+                        if valid_lines > 0:
+                            with open(output_filename, "rb") as file:
+                                st.success(f"🎉 সফলভাবে {valid_lines} টি স্মুথ ভেক্টর কার্ভ তৈরি হয়েছে!")
+                                st.download_button("📥 স্মুথ 3D-রেডি DXF ডাউনলোড করুন", data=file, file_name=output_filename, mime="application/dxf")
+                        else:
+                            st.warning("⚠️ কোনো আউটলাইন পাওয়া যায়নি।")
