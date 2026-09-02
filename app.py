@@ -92,8 +92,8 @@ def extract_hybrid_features(cv_bgr_img, vector_model):
     gray = cv2.cvtColor(cv_bgr_img, cv2.COLOR_BGR2GRAY)
     laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
     edges = cv2.Canny(gray, 100, 200)
- edge_density = np.sum(edges > 0) / edges.size
-# আপনার আগের কোডের প্রতিটি ফিচার এবং লজিক ১০০ ভাগ ঠিক রেখে, কার্ভ ও ওভাল শেপগুলোর "ভাঙা লাইন" (jagged segments) দূর করার জন্য Spline (স্মুথ কার্ভ) টেকনিক এবং নতুন স্লাইডার রেঞ্জ কোডে ইন্টিগ্রেট করে দিয়েছি।
+    edge_density = (np.sum(edges > 0) / (edgesআপনার আগের কোডের প্রতিটি ফিচার এবং লজিক ১০০ ভাগ ঠিক রেখে, কার্ভ ও ওভাল শেপগুলোর "ভাঙা লাইন" (jagged segments) দূর করার জন্য **Spline (স্মুথ কার্ভ)** টেকনিক এবং **নতুন স্লাইডার রেঞ্জ** কোডে ইন্টিগ্রেট করে দিয়েছি। 
+
 আমি "Convert Clear Photo" এবং "Process Photo and Convert" - দুটি জায়গাতেই Spline মেথড অ্যাড করে দিয়েছি, যাতে যেকোনো জায়গা থেকে DXF বানালেই লাইন একদম নিখুঁত রাউন্ড আসে।
 
 নিচে আপনার আপডেট করা সম্পূর্ণ কোডটি দেওয়া হলো। আপনি সরাসরি এটি কপি করে আপনার ফাইলে বসিয়ে রান করতে পারবেন (আপনাকে আর কিছু এডিট করতে হবে না):
