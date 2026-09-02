@@ -376,7 +376,7 @@ if app_mode == "🧵 Fabric Vision AI":
 
 
 # ==========================================
-# APP 2: DXF CONVERTER (With Live Camera Added)
+# APP 2: AUTO DXF CONVERTER (Crashing Safety Fixed)
 # ==========================================
 elif app_mode == "📐 Auto DXF Converter":
     
@@ -401,39 +401,49 @@ elif app_mode == "📐 Auto DXF Converter":
             if cam_file: uploaded_file = cam_file
 
         if uploaded_file is not None:
-            file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
-            img = cv2.imdecode(file_bytes, cv2.IMREAD_GRAYSCALE)
+            try:
+                uploaded_file.seek(0) # বাফার রিসেট
+                file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
+                img = cv2.imdecode(file_bytes, cv2.IMREAD_GRAYSCALE)
 
-            if img is not None:
-                st.image(img, caption="আপনার ইনপুট ছবি", width=300)
+                if img is None:
+                    st.error("⚠️ ছবি সঠিকভাবে লোড করা সম্ভব হয়নি! আবার চেষ্টা করুন।")
+                else:
+                    st.image(img, caption="আপনার ইনপুট ছবি", width=300)
 
-                if st.button("⚡ DXF ফাইলে কনভার্ট করুন", key="btn1"):
-                    with st.spinner("প্রসেসিং হচ্ছে, অনুগ্রহ করে অপেক্ষা করুন..."):
-                        _, thresh = cv2.threshold(img, 127, 255, cv2.THRESH_BINARY_INV)
-                        contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+                    if st.button("⚡ DXF ফাইলে কনভার্ট করুন", key="btn1"):
+                        with st.spinner("প্রসেসিং হচ্ছে, অনুগ্রহ করে অপেক্ষা করুন..."):
+                            _, thresh = cv2.threshold(img, 127, 255, cv2.THRESH_BINARY_INV)
+                            contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
-                        doc = ezdxf.new(dxfversion="R2010")
-                        msp = doc.modelspace()
+                            doc = ezdxf.new(dxfversion="R2010")
+                            msp = doc.modelspace()
 
-                        for cnt in contours:
-                            if len(cnt) > 2:
-                                points = [(float(pt[0][0]), float(pt[0][1])) for pt in cnt]
-                                msp.add_lwpolyline(points, close=True)
+                            count = 0
+                            for cnt in contours:
+                                if len(cnt) > 2:
+                                    points = [(float(pt[0][0]), float(pt[0][1])) for pt in cnt]
+                                    msp.add_lwpolyline(points, close=True)
+                                    count += 1
 
-                        # Handle name dynamically based on upload type
-                        file_base_name = uploaded_file.name if hasattr(uploaded_file, 'name') else "Camera_Snapshot"
-                        output_filename = f"{os.path.splitext(file_base_name)[0]}.dxf"
-                        doc.saveas(output_filename)
+                            if count == 0:
+                                st.warning("⚠️ কোনো আউটলাইন/অবজেক্ট সনাক্ত করা যায়নি। অন্য পরিষ্কার ছবি চেষ্টা করুন।")
+                            else:
+                                file_base_name = getattr(uploaded_file, 'name', 'Camera_Snapshot.jpg')
+                                output_filename = f"{os.path.splitext(file_base_name)[0]}.dxf"
+                                doc.saveas(output_filename)
 
-                        with open(output_filename, "rb") as file:
-                            st.success("সফলভাবে কনভার্ট হয়েছে!")
-                            st.download_button(
-                                label="📥 DXF ফাইল ডাউনলোড করুন",
-                                data=file,
-                                file_name=output_filename,
-                                mime="application/dxf",
-                                key="dl_btn1"
-                            )
+                                with open(output_filename, "rb") as file:
+                                    st.success("সফলভাবে কনভার্ট হয়েছে!")
+                                    st.download_button(
+                                        label="📥 DXF ফাইল ডাউনলোড করুন",
+                                        data=file,
+                                        file_name=output_filename,
+                                        mime="application/dxf",
+                                        key="dl_btn1"
+                                    )
+            except Exception as e:
+                st.error(f"❌ একটি টেকনিক্যাল সমস্যা হয়েছে: {e}")
 
     elif page == "Process Photo and Convert":
         st.title("⚙️ Process Photo and Convert")
@@ -450,21 +460,21 @@ elif app_mode == "📐 Auto DXF Converter":
             if cam_file: uploaded_file = cam_file
 
         if uploaded_file is not None:
-            input_image = Image.open(uploaded_file)
-            st.image(input_image, caption="অরিজিনাল ছবি", width=300)
+            try:
+                uploaded_file.seek(0)
+                input_image = Image.open(uploaded_file)
+                st.image(input_image, caption="অরিজিনাল ছবি", width=300)
 
-            if st.button("⚡ প্রসেস ও DXF ফাইলে কনভার্ট করুন", key="btn2"):
-                with st.spinner("অ্যাডভান্সড প্রসেসিং হচ্ছে (ব্যাকগ্রাউন্ড রিমুভ ও শার্পেন)... দয়া করে অপেক্ষা করুন।"):
-                    try:
+                if st.button("⚡ প্রসেস ও DXF ফাইলে কনভার্ট করুন", key="btn2"):
+                    with st.spinner("অ্যাডভান্সড প্রসেসিং হচ্ছে (ব্যাকগ্রাউন্ড রিমুভ ও শার্পেন)..."):
                         img_no_bg = remove(input_image)
                         img_array = np.array(img_no_bg)
                         
-                        if img_array.shape[2] == 4:
+                        if img_array.ndim == 3 and img_array.shape[2] == 4:
                             alpha_channel = img_array[:, :, 3]
                             rgb_channels = img_array[:, :, :3]
                             white_background = np.ones_like(rgb_channels, dtype=np.uint8) * 255
                             alpha_factor = alpha_channel[:, :, np.newaxis] / 255.0
-                            alpha_factor = np.concatenate([alpha_factor, alpha_factor, alpha_factor], axis=2)
                             img_rgb = rgb_channels * alpha_factor + white_background * (1 - alpha_factor)
                             img_rgb = img_rgb.astype(np.uint8)
                         else:
@@ -487,12 +497,14 @@ elif app_mode == "📐 Auto DXF Converter":
                         doc = ezdxf.new(dxfversion='R2010')
                         msp = doc.modelspace()
 
+                        count = 0
                         for cnt in contours:
                             if cv2.contourArea(cnt) > 10: 
                                 points = [(float(pt[0][0]), float(pt[0][1])) for pt in cnt]
                                 msp.add_lwpolyline(points, close=True)
+                                count += 1
 
-                        file_base_name = uploaded_file.name if hasattr(uploaded_file, 'name') else "Camera_Snapshot"
+                        file_base_name = getattr(uploaded_file, 'name', 'Camera_Snapshot.jpg')
                         output_filename = f"{os.path.splitext(file_base_name)[0]}_Processed.dxf"
                         doc.saveas(output_filename)
 
@@ -505,5 +517,5 @@ elif app_mode == "📐 Auto DXF Converter":
                                 mime="application/dxf",
                                 key="dl_btn2"
                             )
-                    except Exception as e:
-                        st.error(f"প্রসেস করার সময় একটি সমস্যা হয়েছে: {e}")
+            except Exception as e:
+                st.error(f"❌ প্রসেস করার সময় সমস্যা হয়েছে: {e}")
