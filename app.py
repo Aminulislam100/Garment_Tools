@@ -40,7 +40,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# ২. ডিপ লার্নি ও গ্লোবাল ফাংশনস (QC Checker)
+# ২. ডিপ লার্নিং ও গ্লোবাল ফাংশনস (QC Checker)
 # ==========================================
 BENCHMARK_DIR = "benchmark"
 os.makedirs(BENCHMARK_DIR, exist_ok=True)
@@ -170,7 +170,7 @@ def apply_pixlr_enhancements(img_rgb, do_auto_contrast=True, sharpen_pct=100, do
         limg = cv2.merge((cl, a, b))
         processed = cv2.cvtColor(limg, cv2.COLOR_LAB2RGB)
 
-    # ৩. Sharpen (100% Unsharp Masking for Sharp Eyes/Nose/Lips)
+    # ৩. Sharpen (Unsharp Masking for Sharp Fine Details and Edges)
     if sharpen_pct > 0:
         factor = sharpen_pct / 100.0
         blurred = cv2.GaussianBlur(processed, (0, 0), 3)
@@ -189,7 +189,7 @@ def extract_and_draw_lines_live(img_rgb, edge_sensitivity, smoothness, min_line_
     # Bilateral filter used to keep edge boundaries sharp
     filtered_gray = cv2.bilateralFilter(gray, d=7, sigmaColor=50, sigmaSpace=50)
 
-    # Adaptive Thresholding for subtle facial features (Eyes, Nose, Mouth)
+    # Adaptive Thresholding for subtle pattern features & outlines
     c_val = max(1, int(12 - (sens_norm * 10)))
     adaptive_edges = cv2.adaptiveThreshold(
         filtered_gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
@@ -459,7 +459,7 @@ elif app_mode == "📐 Auto DXF Converter":
                         else:
                             st.error(f"❌ প্রসেসিং ক্র্যাশ করেছে! কারণ: {status}")
             else:
-                st.success("✅ ছবি প্রসেস হয়ে গেছে! এবার নিচের Pixlr অপশন ও স্লাইডার দিয়ে নাক-চোখ পারফেক্ট করুন।")
+                st.success("✅ ছবি প্রসেস হয়ে গেছে! এবার নিচের Pixlr অপশন ও স্লাইডার দিয়ে ডিজাইন বা অবজেক্টের আউটলাইন পারফেক্ট করুন।")
                 
                 # Pixlr Style Image Enhancements Controls
                 st.markdown("### 🎨 Pixlr স্টাইল ফটো এনহ্যান্সমেন্ট")
@@ -484,12 +484,12 @@ elif app_mode == "📐 Auto DXF Converter":
                 col_slider1, col_slider2 = st.columns(2)
                 with col_slider1:
                     edge_sens = st.slider(
-                        "🔍 ফেস ডিটেইলস (Sensitivity)", 
+                        "🔍 প্যাটার্ন ও অবজেক্ট ডিটেইলস (Sensitivity)", 
                         min_value=0, 
                         max_value=100, 
                         value=100, 
                         step=1,
-                        help="১০০ তে রাখলে নাক, চোখ, কানের ভেতরের সূক্ষ্ম লাইন পারফেক্টলি ডিটেক্ট করবে।"
+                        help="১০০ তে রাখলে যেকোনো ডিজাইন, প্যাটার্ন বা অবজেক্টের সূক্ষ্ম আউটলাইন ডিটেক্ট করবে।"
                     )
                     min_len = st.slider(
                         "✂️ ছোট দাগ মুছুন (Noise Remove)", 
@@ -507,7 +507,7 @@ elif app_mode == "📐 Auto DXF Converter":
                         value=0.0005, 
                         step=0.0001, 
                         format="%.4f",
-                        help="০.০০০৫ তে রাখলে অরিজিনাল ফেসিয়াল কার্ভ বজায় থাকবে।"
+                        help="০.০০০৫ তে রাখলে অবজেক্ট বা ডিজাইনের মূল কার্ভ শেপ সঠিক থাকবে।"
                     )
 
                 # Process contours live
