@@ -40,7 +40,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# ২. ডিপ লার্নিং ও গ্লোবাল ফাংশনস (QC Checker)
+# ২. ডিপ লার্নি ও গ্লোবাল ফাংশনস (QC Checker)
 # ==========================================
 BENCHMARK_DIR = "benchmark"
 os.makedirs(BENCHMARK_DIR, exist_ok=True)
@@ -110,10 +110,10 @@ def load_cached_benchmarks(file_list, bench_dir):
     return data
 
 # ==========================================
-# ৩. Crash-Proof ইমেজ রিমুভ ও লাইভ এজ ডিটেকশন
+# ৩. Pixlr-Style ফিল্টার ও প্রসেসিং ইঞ্জিন
 # ==========================================
 def process_base_image(pil_img):
-    """শুধুমাত্র ব্যাকগ্রাউন্ড রিমুভ এবং কালার কারেকশন করবে (একবার রান হবে)"""
+    """ব্যাকগ্রাউন্ড রিমুভ ইঞ্জিন"""
     try:
         resample_filter = getattr(Image, 'Resampling', Image).LANCZOS if hasattr(Image, 'Resampling') else Image.ANTIALIAS
         pil_img.thumbnail((1024, 1024), resample_filter)
@@ -144,51 +144,89 @@ def process_base_image(pil_img):
     except Exception as e:
         return None, str(e)
 
+def apply_pixlr_enhancements(img_rgb, do_auto_contrast=True, sharpen_pct=100, do_autofix=True):
+    """Pixlr অ্যাপের মতো Auto Contrast, Sharpen 100%, এবং AutoFix প্রসেসিং"""
+    processed = img_rgb.copy()
+    
+    # ১. AutoFix (Dynamic Range Normalization)
+    if do_autofix:
+        channels = cv2.split(processed)
+        out_channels = []
+        for ch in channels:
+            min_val, max_val = np.percentile(ch, (1, 99))
+            if max_val > min_val:
+                ch_norm = np.clip((ch - min_val) * (255.0 / (max_val - min_val)), 0, 255).astype(np.uint8)
+            else:
+                ch_norm = ch
+            out_channels.append(ch_norm)
+        processed = cv2.merge(out_channels)
+
+    # ২. Auto Contrast (LAB Space CLAHE)
+    if do_auto_contrast:
+        lab = cv2.cvtColor(processed, cv2.COLOR_RGB2LAB)
+        l, a, b = cv2.split(lab)
+        clahe = cv2.createCLAHE(clipLimit=3.5, tileGridSize=(8, 8))
+        cl = clahe.apply(l)
+        limg = cv2.merge((cl, a, b))
+        processed = cv2.cvtColor(limg, cv2.COLOR_LAB2RGB)
+
+    # ৩. Sharpen (100% Unsharp Masking for Sharp Eyes/Nose/Lips)
+    if sharpen_pct > 0:
+        factor = sharpen_pct / 100.0
+        blurred = cv2.GaussianBlur(processed, (0, 0), 3)
+        sharpened = cv2.addWeighted(processed, 1.0 + factor * 1.5, blurred, -factor * 1.5, 0)
+        processed = np.clip(sharpened, 0, 255).astype(np.uint8)
+
+    return processed
+
 def extract_and_draw_lines_live(img_rgb, edge_sensitivity, smoothness, min_line_length):
-    """স্লাইডার চেঞ্জ করলে এটি লাইভ আপডেট হবে এবং বেটার লাইন ডিটেক্ট করবে"""
+    """হাইব্রিড এজ ডিটেকশন (Adaptive Thresholding + Canny)"""
     bgr_img = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
     gray = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2GRAY)
 
-    # ১. CLAHE (Contrast Enhancement) - ভেতরের ডিটেইলস (নাক, চোখ) স্পষ্ট করার জন্য
-    clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
-    enhanced_gray = clahe.apply(gray)
+    sens_norm = edge_sensitivity / 100.0
 
-    # ২. Bilateral Filter - নয়েজ কমাবে কিন্তু এজ (Edge) নষ্ট করবে না
-    blurred = cv2.bilateralFilter(enhanced_gray, d=9, sigmaColor=75, sigmaSpace=75)
-    
-    # ৩. Canny Edge Detection (ডাইনামিক থ্রেশোল্ড)
-    # edge_sensitivity বাড়ালে থ্রেশোল্ড কমবে, ফলে ভেতরের দুর্বল লাইনও ধরবে
-    lower_thresh = int(max(10, 150 - (edge_sensitivity * 1.5)))
-    upper_thresh = int(max(50, 250 - (edge_sensitivity * 1.5)))
-    
-    edges = cv2.Canny(blurred, lower_thresh, upper_thresh)
+    # Bilateral filter used to keep edge boundaries sharp
+    filtered_gray = cv2.bilateralFilter(gray, d=7, sigmaColor=50, sigmaSpace=50)
 
-    # ছোট লাইন জোড়া লাগানোর জন্য সামান্য Dilate
+    # Adaptive Thresholding for subtle facial features (Eyes, Nose, Mouth)
+    c_val = max(1, int(12 - (sens_norm * 10)))
+    adaptive_edges = cv2.adaptiveThreshold(
+        filtered_gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY_INV, 11, c_val
+    )
+
+    # Dynamic Canny Edge Detection
+    low_canny = int(max(5, 120 - (sens_norm * 110)))
+    high_canny = int(max(25, 220 - (sens_norm * 160)))
+    canny_edges = cv2.Canny(filtered_gray, low_canny, high_canny)
+
+    # Combine both edge features
+    combined_edges = cv2.bitwise_or(adaptive_edges, canny_edges)
+
+    # Morphological clean up
     kernel = np.ones((2, 2), np.uint8)
-    edges_dilated = cv2.dilate(edges, kernel, iterations=1)
+    combined_edges = cv2.morphologyEx(combined_edges, cv2.MORPH_OPEN, kernel, iterations=1)
 
-    # RETR_TREE ব্যবহার করা হলো যাতে ভেতরের সব অবজেক্ট ধরা পড়ে
-    cnts = cv2.findContours(edges_dilated, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    cnts = cv2.findContours(combined_edges, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     contours = cnts[0] if len(cnts) == 2 else cnts[1]
 
     highlight_img = img_rgb.copy()
     processed_contours = []
 
     for cnt in contours:
-        arc_len = cv2.arcLength(cnt, True)
-        if arc_len > min_line_length:
-            # লাইভ স্মুথনেস অ্যাপ্লাই করা হচ্ছে প্রিভিউ এর জন্য
+        arc_len = cv2.arcLength(cnt, False)
+        if arc_len >= min_line_length:
             epsilon = smoothness * arc_len
-            approx_cnt = cv2.approxPolyDP(cnt, epsilon, False) 
+            approx_cnt = cv2.approxPolyDP(cnt, epsilon, False)
             processed_contours.append(approx_cnt)
-            
-            # প্রিভিউতে সবুজ রঙের লাইন ড্র করা (একটু চিকন করা হলো যাতে ভেতরের ডিটেইলস বোঝা যায়)
+            # Draw detected edges in green
             cv2.drawContours(highlight_img, [approx_cnt], -1, (0, 255, 0), 1)
-            
+
     return highlight_img, processed_contours
 
 def export_smooth_dxf(contours, output_filename):
-    """প্রসেসড কন্টুর গুলোকে DXF এ এক্সপোর্ট করবে"""
+    """DXF এ এক্সপোর্ট করার ফাংশন (SPLINE সমর্থনসহ)"""
     doc = ezdxf.new(dxfversion='R2010')
     msp = doc.modelspace()
     valid_count = 0
@@ -197,7 +235,6 @@ def export_smooth_dxf(contours, output_filename):
         points = [(float(pt[0][0]), float(-pt[0][1]), 0) for pt in cnt]
         
         if len(points) >= 4:
-            # Spline ব্যবহার করা হচ্ছে একদম রাউন্ড শেপের জন্য
             msp.add_spline(points)
             valid_count += 1
         elif len(points) >= 2:
@@ -385,7 +422,7 @@ elif app_mode == "📐 Auto DXF Converter":
                         st.download_button("📥 DXF ফাইল ডাউনলোড করুন", data=file, file_name=output_filename, mime="application/dxf")
 
     elif page == "Process Photo and Convert":
-        st.title("⚙️ Process Photo and Convert (Live Edge & Smoothness)")
+        st.title("⚙️ Process Photo and Convert (Pixlr Enhanced Edge Detection)")
         tab1, tab2 = st.tabs(["📁 ফাইল আপলোড", "📸 লাইভ ক্যামেরা"])
         uploaded_file = None
         
@@ -397,7 +434,6 @@ elif app_mode == "📐 Auto DXF Converter":
             if cam_file: uploaded_file = cam_file
 
         if uploaded_file is not None:
-            # File ID চেক করে নতুন ছবি এলে স্টোর ক্লিয়ার করা
             file_id = getattr(uploaded_file, 'name', 'camera') + str(getattr(uploaded_file, 'size', 0))
             if st.session_state.get("current_file_id") != file_id:
                 st.session_state["current_file_id"] = file_id
@@ -412,10 +448,10 @@ elif app_mode == "📐 Auto DXF Converter":
 
             st.markdown("---")
             
-            # প্রথম ধাপ: শুধু ব্যাকগ্রাউন্ড রিমুভ (একবার হবে, কারণ এটা ভারী কাজ)
+            # Step 1: Background removal
             if st.session_state.get("clean_rgb") is None:
                 if st.button("✨ ১. ব্যাকগ্রাউন্ড রিমুভ ও ক্লিন করুন", type="primary"):
-                    with st.spinner("অ্যাডভান্সড প্রসেসিং চলছে... (একটু সময় লাগতে পারে)"):
+                    with st.spinner("অ্যাডভান্সড প্রসেসিং চলছে..."):
                         clean_rgb, status = process_base_image(input_image)
                         if clean_rgb is not None:
                             st.session_state["clean_rgb"] = clean_rgb
@@ -423,34 +459,73 @@ elif app_mode == "📐 Auto DXF Converter":
                         else:
                             st.error(f"❌ প্রসেসিং ক্র্যাশ করেছে! কারণ: {status}")
             else:
-                st.success("✅ ছবি প্রসেস হয়ে গেছে! এবার নিচের স্লাইডার দিয়ে লাইন ঠিক করুন।")
+                st.success("✅ ছবি প্রসেস হয়ে গেছে! এবার নিচের Pixlr অপশন ও স্লাইডার দিয়ে নাক-চোখ পারফেক্ট করুন।")
                 
-                st.markdown("### 🎛️ লাইভ লাইন কন্ট্রোলার (সাথ সাথে প্রিভিউ দেখুন)")
+                # Pixlr Style Image Enhancements Controls
+                st.markdown("### 🎨 Pixlr স্টাইল ফটো এনহ্যান্সমেন্ট")
+                p_col1, p_col2, p_col3 = st.columns(3)
+                with p_col1:
+                    chk_autofix = st.checkbox("🪄 AutoFix (Auto Lighting)", value=True)
+                with p_col2:
+                    chk_autocontrast = st.checkbox("🌓 Auto Contrast (Boost Details)", value=True)
+                with p_col3:
+                    slider_sharpen = st.slider("🔪 Sharpen Amount (%)", min_value=0, max_value=100, value=100, step=10)
+
+                # Enhance image using Pixlr logic
+                enhanced_base = apply_pixlr_enhancements(
+                    st.session_state["clean_rgb"],
+                    do_auto_contrast=chk_autocontrast,
+                    sharpen_pct=slider_sharpen,
+                    do_autofix=chk_autofix
+                )
+
+                st.markdown("### 🎛️ লাইভ লাইন কন্ট্রোলার")
                 
-                # স্লাইডারগুলো (এগুলো নাড়ালেই ছবি লাইভ আপডেট হবে)
                 col_slider1, col_slider2 = st.columns(2)
                 with col_slider1:
-                    edge_sens = st.slider("🔍 ফেস ডিটেইলস (Sensitivity)", min_value=0, max_value=100, value=60, step=5, help="বাড়ালে নাক, চোখ, মুখের ভেতরের লাইন বেশি ধরবে।")
-                    min_len = st.slider("✂️ ছোট দাগ মুছুন (Noise Remove)", min_value=5, max_value=100, value=20, step=5, help="বাড়ালে মুখের হিজিবিজি ছোট দাগগুলো মুছে যাবে।")
+                    edge_sens = st.slider(
+                        "🔍 ফেস ডিটেইলস (Sensitivity)", 
+                        min_value=0, 
+                        max_value=100, 
+                        value=100, 
+                        step=1,
+                        help="১০০ তে রাখলে নাক, চোখ, কানের ভেতরের সূক্ষ্ম লাইন পারফেক্টলি ডিটেক্ট করবে।"
+                    )
+                    min_len = st.slider(
+                        "✂️ ছোট দাগ মুছুন (Noise Remove)", 
+                        min_value=5, 
+                        max_value=100, 
+                        value=15, 
+                        step=1,
+                        help="ছোট অবাঞ্ছিত দাগ মুছতে ব্যবহার করুন।"
+                    )
                 with col_slider2:
-                    smooth_val = st.slider("〰️ লাইন স্মুথনেস (Curve Fitting)", min_value=0.0005, max_value=0.0200, value=0.0020, step=0.0010, format="%.4f", help="বাড়ালে লাইন ভেঙে সোজা হয়ে যাবে, কমালে অরিজিনাল কার্ভ থাকবে।")
+                    smooth_val = st.slider(
+                        "〰️ লাইন স্মুথনেস (Curve Fitting)", 
+                        min_value=0.0000, 
+                        max_value=0.0050, 
+                        value=0.0005, 
+                        step=0.0001, 
+                        format="%.4f",
+                        help="০.০০০৫ তে রাখলে অরিজিনাল ফেসিয়াল কার্ভ বজায় থাকবে।"
+                    )
 
-                # লাইভ প্রসেসিং
+                # Process contours live
                 preview_img, final_contours = extract_and_draw_lines_live(
-                    st.session_state["clean_rgb"], 
+                    enhanced_base, 
                     edge_sensitivity=edge_sens, 
                     smoothness=smooth_val, 
                     min_line_length=min_len
                 )
 
                 with col_p2:
-                    st.image(preview_img, caption="লাইভ ট্রেসিং ভিউ (সবুজ লাইনগুলো DXF এ যাবে)", use_container_width=True)
+                    st.image(preview_img, caption="লাইভ ট্রেসিং ভিউ (Pixlr Enhanced Lines)", use_container_width=True)
 
                 st.markdown("---")
                 if st.button("📐 ২. স্মুথ DXF ফাইলে কনভার্ট করুন", type="primary"):
                     with st.spinner("৩D অ্যাপের উপযোগী স্মুথ DXF তৈরি হচ্ছে..."):
                         file_base_name = getattr(uploaded_file, 'name', 'Snapshot.jpg')
-                        output_filename = f"Live_Smooth_{os.path.splitext(file_base_name)[0]}.dxf"
+                        output_filename = f"Pixlr_Smooth_{os.path.splitext(file_base_name)[0]}.dxf"
                         
                         valid_lines = export_smooth_dxf(final_contours, output_filename)
 
@@ -459,4 +534,4 @@ elif app_mode == "📐 Auto DXF Converter":
                                 st.success(f"🎉 সফলভাবে {valid_lines} টি স্মুথ ভেক্টর কার্ভ তৈরি হয়েছে!")
                                 st.download_button("📥 স্মুথ 3D-রেডি DXF ডাউনলোড করুন", data=file, file_name=output_filename, mime="application/dxf")
                         else:
-                            st.warning("⚠️ কোনো আউটলাইন পাওয়া যায়নি। স্লাইডারের ডিটেইলস বাড়িয়ে আবার চেষ্টা করুন।")
+                            st.warning("⚠️ কোনো আউটলাইন পাওয়া যায়নি।")
