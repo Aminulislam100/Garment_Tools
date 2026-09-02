@@ -287,6 +287,302 @@ if app_mode == "🧵 QC Checker":
                 with col_btn2:
                     if st.button("🔄 আগের সব মুছে নতুন সেভ করুন", type="primary", use_container_width=True):
                         for f in os.listdir(BENCHMARK_DIR): os.remove(os.path.join(BENCHMARK_DIR, f))
+                        for i, file in enumerate(newআপনার দেওয়া ইনস্ট্রাকশন অনুযায়ী আমি আগের সেই সাধারণ থ্রেশহোল্ড (Threshold) লজিকের জায়গায় নতুন **Canny Edge Detection**-এর লজিকটি বসিয়ে পুরো কোডটি আপডেট করে দিয়েছি। 
+
+এছাড়া আপনার মূল কোডে কিছু ইনভিজিবল স্পেস (Invisible spaces/`\xa0`) ছিল, যেগুলোর কারণে পাইথনে `IndentationError` আসতে পারে। আমি সেগুলোও ক্লিন করে দিয়েছি যাতে কোডটি সরাসরি কপি-পেস্ট করলেই কাজ করে।
+
+নিচে আপনার আপডেট করা ফুল কোডটি দেওয়া হলো:
+
+```python
+import os
+import time
+import cv2
+import numpy as np
+import streamlit as st
+from PIL import Image, ImageEnhance
+import torch
+import torchvision.models as models
+import torchvision.transforms as transforms
+import ezdxf
+
+# ==========================================
+# Crash-Proof Import for Rembg
+# ==========================================
+try:
+    from rembg import remove
+    REMBG_AVAILABLE = True
+except ImportError:
+    REMBG_AVAILABLE = False
+    st.warning("⚠️ Rembg ইনস্টল করা নেই! ব্যাকগ্রাউন্ড রিমুভ ছাড়া প্রসেস হবে। ইনস্টল করতে: pip install rembg")
+
+# ==========================================
+# ১. পেজ সেটআপ ও গ্লোবাল কনফিগারেশন
+# ==========================================
+st.set_page_config(page_title="Ultimate QC & Auto DXF Tool", layout="wide", page_icon="⚙️")
+
+st.markdown("""
+<style>
+    div[data-testid="stRadio"] { display: flex; justify-content: center; align-items: center; margin-bottom: 2rem; }
+    div[data-testid="stRadio"] > div[role="radiogroup"] { display: flex; flex-direction: row; justify-content: center; background: #f1f5f9; padding: 8px; border-radius: 50px; box-shadow: inset 5px 5px 10px #cbd5e1, inset -5px -5px 10px #ffffff; gap: 15px; }
+    div[data-testid="stRadio"] > div[role="radiogroup"] label { background: transparent; padding: 12px 40px; border-radius: 40px; cursor: pointer; transition: all 0.3s ease; border: none; }
+    div[data-testid="stRadio"] > div[role="radiogroup"] label span[data-baseweb="radio"] { display: none; }
+    div[data-testid="stRadio"] > div[role="radiogroup"] label p { color: #475569 !important; font-weight: 700 !important; font-size: 20px !important; margin: 0; }
+    div[data-testid="stRadio"] > div[role="radiogroup"] label[data-checked="true"] { background: linear-gradient(145deg, #1e40af, #3b82f6); box-shadow: 4px 4px 10px #93c5fd, -4px -4px 10px #ffffff; }
+    div[data-testid="stRadio"] > div[role="radiogroup"] label[data-checked="true"] p { color: #ffffff !important; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3); }
+    [data-testid="stContainer"] { background-color: #ffffff !important; color: #0f172a !important; }
+    .step-header-1 { background: linear-gradient(135deg, #c2410c 0%, #ea580c 100%); padding: 12px 20px; border-radius: 8px; color: white; font-weight: bold; font-size: 18px; margin-bottom: 15px; }
+    .step-header-2 { background: linear-gradient(135deg, #065f46 0%, #047857 100%); padding: 12px 20px; border-radius: 8px; color: white; font-weight: bold; font-size: 18px; margin-bottom: 15px; }
+</style>
+""", unsafe_allow_html=True)
+
+# ==========================================
+# ২. ডিপ লার্নিং ও গ্লোবাল ফাংশনস (QC Checker)
+# ==========================================
+BENCHMARK_DIR = "benchmark"
+os.makedirs(BENCHMARK_DIR, exist_ok=True)
+
+@st.cache_resource(show_spinner="AI ভেক্টর ইঞ্জিন লোড হচ্ছে...")
+def load_vector_model():
+    weights = models.MobileNet_V3_Small_Weights.DEFAULT
+    model = models.mobilenet_v3_small(weights=weights)
+    model.classifier = torch.nn.Identity()  
+    model.eval()
+    return model
+
+def resize_with_aspect_ratio(image, width=None, height=None, inter=cv2.INTER_AREA):
+    (h, w) = image.shape[:2]
+    if width is None and height is None: return image
+    if width is None:
+        r = height / float(h)
+        dim = (int(w * r), height)
+    else:
+        r = width / float(w)
+        dim = (width, int(h * r))
+    return cv2.resize(image, dim, interpolation=inter)
+
+def extract_hybrid_features(cv_bgr_img, vector_model):
+    h, w = cv_bgr_img.shape[:2]
+    h_step, w_step = max(1, h // 3), max(1, w // 3)
+    hist_features = []
+    
+    for i in range(3):
+        for j in range(3):
+            sub_crop = cv_bgr_img[i*h_step:(i+1)*h_step, j*w_step:(j+1)*w_step]
+            if sub_crop.size > 0:
+                blur = cv2.GaussianBlur(sub_crop, (7, 7), 0)
+                lab = cv2.cvtColor(blur, cv2.COLOR_BGR2LAB)
+                hist = cv2.calcHist([lab], [0, 1, 2], None, [8, 8, 8], [0, 256, 0, 256, 0, 256])
+                cv2.normalize(hist, hist)
+                hist_features.extend(hist.flatten())
+                
+    lab_hist = np.array(hist_features, dtype=np.float32)
+    pil_img = Image.fromarray(cv2.cvtColor(cv_bgr_img, cv2.COLOR_BGR2RGB))
+    preprocess = transforms.Compose([transforms.Resize((224, 224)), transforms.ToTensor(), transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+    tensor_img = preprocess(pil_img).unsqueeze(0)
+    
+    with torch.no_grad():
+        embedding = vector_model(tensor_img).squeeze().numpy()
+    norm = np.linalg.norm(embedding)
+    if norm > 0: embedding = embedding / norm
+
+    gray = cv2.cvtColor(cv_bgr_img, cv2.COLOR_BGR2GRAY)
+    laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
+    edges = cv2.Canny(gray, 100, 200)
+    edge_density = (np.sum(edges > 0) / (edges.shape[0] * edges.shape[1])) * 100.0
+
+    return lab_hist, embedding, laplacian_var, edge_density
+
+@st.cache_data(show_spinner=False)
+def load_cached_benchmarks(file_list, bench_dir):
+    vector_model = load_vector_model()
+    data = []
+    for b_file in file_list:
+        b_path = os.path.join(bench_dir, b_file)
+        img = cv2.imread(b_path)
+        if img is not None:
+            img = resize_with_aspect_ratio(img, width=500)
+            lab_hist, embedding, lap_var, edge_density = extract_hybrid_features(img, vector_model)
+            data.append((b_file, b_path, lab_hist, embedding, lap_var, edge_density))
+    return data
+
+# ==========================================
+# ৩. Pixlr-Style ফিল্টার ও প্রসেসিং ইঞ্জিন
+# ==========================================
+def process_base_image(pil_img):
+    """ব্যাকগ্রাউন্ড রিমুভ ইঞ্জিন"""
+    try:
+        resample_filter = getattr(Image, 'Resampling', Image).LANCZOS if hasattr(Image, 'Resampling') else Image.ANTIALIAS
+        pil_img.thumbnail((1024, 1024), resample_filter)
+        if pil_img.mode != 'RGB': pil_img = pil_img.convert('RGB')
+        
+        enhancer_col = ImageEnhance.Color(pil_img)
+        pil_img = enhancer_col.enhance(1.1)
+        
+        img_array = None
+        if REMBG_AVAILABLE:
+            try:
+                img_no_bg = remove(pil_img)
+                img_array = np.array(img_no_bg)
+            except Exception as e:
+                img_array = np.array(pil_img)
+        else:
+            img_array = np.array(pil_img)
+        
+        if img_array.ndim == 3 and img_array.shape[2] == 4:
+            alpha = img_array[:, :, 3] / 255.0
+            rgb = img_array[:, :, :3]
+            white_bg = np.ones_like(rgb, dtype=np.uint8) * 255
+            img_rgb = (rgb * alpha[:, :, np.newaxis] + white_bg * (1 - alpha[:, :, np.newaxis])).astype(np.uint8)
+        else:
+            img_rgb = img_array
+
+        return img_rgb, "Success"
+    except Exception as e:
+        return None, str(e)
+
+def apply_pixlr_enhancements(img_rgb, do_auto_contrast=True, sharpen_pct=100, do_autofix=True):
+    """Pixlr অ্যাপের মতো Auto Contrast, Sharpen 100%, এবং AutoFix প্রসেসিং"""
+    processed = img_rgb.copy()
+    
+    # ১. AutoFix (Dynamic Range Normalization)
+    if do_autofix:
+        channels = cv2.split(processed)
+        out_channels = []
+        for ch in channels:
+            min_val, max_val = np.percentile(ch, (1, 99))
+            if max_val > min_val:
+                ch_norm = np.clip((ch - min_val) * (255.0 / (max_val - min_val)), 0, 255).astype(np.uint8)
+            else:
+                ch_norm = ch
+            out_channels.append(ch_norm)
+        processed = cv2.merge(out_channels)
+
+    # ২. Auto Contrast (LAB Space CLAHE)
+    if do_auto_contrast:
+        lab = cv2.cvtColor(processed, cv2.COLOR_RGB2LAB)
+        l, a, b = cv2.split(lab)
+        clahe = cv2.createCLAHE(clipLimit=3.5, tileGridSize=(8, 8))
+        cl = clahe.apply(l)
+        limg = cv2.merge((cl, a, b))
+        processed = cv2.cvtColor(limg, cv2.COLOR_LAB2RGB)
+
+    # ৩. Sharpen (Unsharp Masking for Sharp Fine Details and Edges)
+    if sharpen_pct > 0:
+        factor = sharpen_pct / 100.0
+        blurred = cv2.GaussianBlur(processed, (0, 0), 3)
+        sharpened = cv2.addWeighted(processed, 1.0 + factor * 1.5, blurred, -factor * 1.5, 0)
+        processed = np.clip(sharpened, 0, 255).astype(np.uint8)
+
+    return processed
+
+def extract_and_draw_lines_live(img_rgb, edge_sensitivity, smoothness, min_line_length):
+    """হাইব্রিড এজ ডিটেকশন (Adaptive Thresholding + Canny)"""
+    bgr_img = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
+    gray = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2GRAY)
+
+    sens_norm = edge_sensitivity / 100.0
+
+    # Bilateral filter used to keep edge boundaries sharp
+    filtered_gray = cv2.bilateralFilter(gray, d=7, sigmaColor=50, sigmaSpace=50)
+
+    # Adaptive Thresholding for subtle pattern features & outlines
+    c_val = max(1, int(12 - (sens_norm * 10)))
+    adaptive_edges = cv2.adaptiveThreshold(
+        filtered_gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY_INV, 11, c_val
+    )
+
+    # Dynamic Canny Edge Detection
+    low_canny = int(max(5, 120 - (sens_norm * 110)))
+    high_canny = int(max(25, 220 - (sens_norm * 160)))
+    canny_edges = cv2.Canny(filtered_gray, low_canny, high_canny)
+
+    # Combine both edge features
+    combined_edges = cv2.bitwise_or(adaptive_edges, canny_edges)
+
+    # Morphological clean up
+    kernel = np.ones((2, 2), np.uint8)
+    combined_edges = cv2.morphologyEx(combined_edges, cv2.MORPH_OPEN, kernel, iterations=1)
+
+    cnts = cv2.findContours(combined_edges, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    contours = cnts[0] if len(cnts) == 2 else cnts[1]
+
+    highlight_img = img_rgb.copy()
+    processed_contours = []
+
+    for cnt in contours:
+        arc_len = cv2.arcLength(cnt, False)
+        if arc_len >= min_line_length:
+            epsilon = smoothness * arc_len
+            approx_cnt = cv2.approxPolyDP(cnt, epsilon, False)
+            processed_contours.append(approx_cnt)
+            # Draw detected edges in green
+            cv2.drawContours(highlight_img, [approx_cnt], -1, (0, 255, 0), 1)
+
+    return highlight_img, processed_contours
+
+def export_smooth_dxf(contours, output_filename):
+    """DXF এ এক্সপোর্ট করার ফাংশন (SPLINE সমর্থনসহ)"""
+    doc = ezdxf.new(dxfversion='R2010')
+    msp = doc.modelspace()
+    valid_count = 0
+
+    for cnt in contours:
+        points = [(float(pt[0][0]), float(-pt[0][1]), 0) for pt in cnt]
+        
+        if len(points) >= 4:
+            msp.add_spline(points)
+            valid_count += 1
+        elif len(points) >= 2:
+            pts_2d = [(p[0], p[1]) for p in points]
+            msp.add_lwpolyline(pts_2d, close=False)
+            valid_count += 1
+                
+    doc.saveas(output_filename)
+    return valid_count
+
+# ==========================================
+# ৪. মেইন নেভিগেশন (Top Menu)
+# ==========================================
+app_mode = st.radio("Navigation", ["🧵 QC Checker", "📐 Auto DXF Converter"], horizontal=True, label_visibility="collapsed")
+
+# ==========================================
+# APP 1: QC CHECKER
+# ==========================================
+if app_mode == "🧵 QC Checker":
+    st.markdown("""
+    <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%); padding: 32px 20px; border-radius: 18px; box-shadow: 0 15px 35px rgba(15, 23, 42, 0.4); text-align: center; margin-bottom: 30px;">
+        <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 800;">🧵 Advanced QC Checker</h1>
+    </div>
+    """, unsafe_allow_html=True)
+
+    if 'captured_benchmarks' not in st.session_state: st.session_state.captured_benchmarks = []
+    if 'last_cam_hash' not in st.session_state: st.session_state.last_cam_hash = None
+    if 'cam_key' not in st.session_state: st.session_state.cam_key = 0
+
+    st.sidebar.header("⚙️ Settings")
+    inspection_mode = st.sidebar.selectbox("🔍 ইনস্পেকশন মোড", ("🌟 হাইব্রিড অল-ইন-ওয়ান", "🎨 কালার + ডিজাইন", "👕 শুধুমাত্র কালার", "✨ শুধুমাত্র ডিজাইন", "🧶 সুতার ঘনত্ব"))
+    color_threshold = st.sidebar.slider("🎨 কালার/শেড পাস মার্ক (%)", 50.0, 99.0, 78.0, 1.0)
+    pattern_threshold = st.sidebar.slider("✨ প্রিন্ট/প্যাটার্ন পাস মার্ক (%)", 50.0, 99.0, 80.0, 1.0)
+    texture_threshold = st.sidebar.slider("🧶 টেক্সচার/ঘনত্ব পাস মার্ক (%)", 50.0, 99.0, 70.0, 1.0)
+
+    with st.container(border=True):
+        st.markdown('<div class="step-header-1">🏆 ধাপ ১: বেঞ্চমার্ক ইনপুট</div>', unsafe_allow_html=True)
+        bench_method = st.radio("মাস্টার স্যাম্পল কিভাবে দেবেন?", ("📁 গ্যালারি / ফাইল", "📸 লাইভ ক্যামেরা"), horizontal=True)
+        
+        if bench_method == "📁 গ্যালারি / ফাইল":
+            new_benchmarks = st.file_uploader("ছবি আপলোড করুন", accept_multiple_files=True, type=['png', 'jpg', 'jpeg'], key="bench_upload")
+            if new_benchmarks:
+                col_btn1, col_btn2 = st.columns(2)
+                with col_btn1:
+                    if st.button("➕ বর্তমান স্যাম্পলের সাথে যোগ করুন", use_container_width=True):
+                        existing_count = len([f for f in os.listdir(BENCHMARK_DIR)])
+                        for i, file in enumerate(new_benchmarks):
+                            with open(os.path.join(BENCHMARK_DIR, f"master_{existing_count + i + 1}.jpg"), "wb") as f: f.write(file.getbuffer())
+                        st.rerun()
+                with col_btn2:
+                    if st.button("🔄 আগের সব মুছে নতুন সেভ করুন", type="primary", use_container_width=True):
+                        for f in os.listdir(BENCHMARK_DIR): os.remove(os.path.join(BENCHMARK_DIR, f))
                         for i, file in enumerate(new_benchmarks):
                             with open(os.path.join(BENCHMARK_DIR, f"master_{i+1}.jpg"), "wb") as f: f.write(file.getbuffer())
                         st.rerun()
@@ -394,8 +690,12 @@ elif app_mode == "📐 Auto DXF Converter":
 
             if st.button("⚡ DXF ফাইলে কনভার্ট করুন"):
                 with st.spinner("প্রসেসিং হচ্ছে..."):
-                    _, thresh = cv2.threshold(img, 127, 255, cv2.THRESH_BINARY_INV)
-                    cnts = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+                    # নয়েজ কমানোর জন্য ব্লার
+                    blurred = cv2.GaussianBlur(img, (5, 5), 0)
+                    # Canny Edge Detection (যা শুধু আউটলাইন ধরবে)
+                    edges = cv2.Canny(blurred, 50, 150)
+                    # RETR_EXTERNAL ব্যবহার করলে ভেতরের অপ্রয়োজনীয় ছোট নয়েজ বাদ যাবে
+                    cnts = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                     contours = cnts[0] if len(cnts) == 2 else cnts[1]
 
                     doc = ezdxf.new(dxfversion="R2010")
