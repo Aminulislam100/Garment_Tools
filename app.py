@@ -17,108 +17,7 @@ try:
     REMBG_AVAILABLE = True
 except ImportError:
     REMBG_AVAILABLE = False
-    st.warning("⚠️ Rembg ইনস্টল করা নেই! ব্যাকগ্রাউন্ড রিমুভ ছাড়া প্রসেস হবে। ইনস্টল করতে: pip install rembg")
-
-# ==========================================
-# ১. পেজ সেটআপ ও গ্লোবাল কনফিগারেশন
-# ==========================================
-st.set_page_config(page_title="Ultimate QC & Auto DXF Tool", layout="wide", page_icon="⚙️")
-
-st.markdown("""
-<style>
-    div[data-testid="stRadio"] { display: flex; justify-content: center; align-items: center; margin-bottom: 2rem; }
-    div[data-testid="stRadio"] > div[role="radiogroup"] { display: flex; flex-direction: row; justify-content: center; background: #f1f5f9; padding: 8px; border-radius: 50px; box-shadow: inset 5px 5px 10px #cbd5e1, inset -5px -5px 10px #ffffff; gap: 15px; }
-    div[data-testid="stRadio"] > div[role="radiogroup"] label { background: transparent; padding: 12px 40px; border-radius: 40px; cursor: pointer; transition: all 0.3s ease; border: none; }
-    div[data-testid="stRadio"] > div[role="radiogroup"] label span[data-baseweb="radio"] { display: none; }
-    div[data-testid="stRadio"] > div[role="radiogroup"] label p { color: #475569 !important; font-weight: 700 !important; font-size: 20px !important; margin: 0; }
-    div[data-testid="stRadio"] > div[role="radiogroup"] label[data-checked="true"] { background: linear-gradient(145deg, #1e40af, #3b82f6); box-shadow: 4px 4px 10px #93c5fd, -4px -4px 10px #ffffff; }
-    div[data-testid="stRadio"] > div[role="radiogroup"] label[data-checked="true"] p { color: #ffffff !important; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3); }
-    [data-testid="stContainer"] { background-color: #ffffff !important; color: #0f172a !important; }
-    .step-header-1 { background: linear-gradient(135deg, #c2410c 0%, #ea580c 100%); padding: 12px 20px; border-radius: 8px; color: white; font-weight: bold; font-size: 18px; margin-bottom: 15px; }
-    .step-header-2 { background: linear-gradient(135deg, #065f46 0%, #047857 100%); padding: 12px 20px; border-radius: 8px; color: white; font-weight: bold; font-size: 18px; margin-bottom: 15px; }
-</style>
-""", unsafe_allow_html=True)
-
-# ==========================================
-# ২. ডিপ লার্নিং ও গ্লোবাল ফাংশনস
-# ==========================================
-BENCHMARK_DIR = "benchmark"
-os.makedirs(BENCHMARK_DIR, exist_ok=True)
-
-@st.cache_resource(show_spinner="AI ভেক্টর ইঞ্জিন লোড হচ্ছে...")
-def load_vector_model():
-    weights = models.MobileNet_V3_Small_Weights.DEFAULT
-    model = models.mobilenet_v3_small(weights=weights)
-    model.classifier = torch.nn.Identity()  
-    model.eval()
-    return model
-
-def resize_with_aspect_ratio(image, width=None, height=None, inter=cv2.INTER_AREA):
-    (h, w) = image.shape[:2]
-    if width is None and height is None: return image
-    if width is None:
-        r = height / float(h)
-        dim = (int(w * r), height)
-    else:
-        r = width / float(w)
-        dim = (width, int(h * r))
-    return cv2.resize(image, dim, interpolation=inter)
-
-def extract_hybrid_features(cv_bgr_img, vector_model):
-    h, w = cv_bgr_img.shape[:2]
-    h_step, w_step = max(1, h // 3), max(1, w // 3)
-    hist_features = []
-    
-    for i in range(3):
-        for j in range(3):
-            sub_crop = cv_bgr_img[i*h_step:(i+1)*h_step, j*w_step:(j+1)*w_step]
-            if sub_crop.size > 0:
-                blur = cv2.GaussianBlur(sub_crop, (7, 7), 0)
-                lab = cv2.cvtColor(blur, cv2.COLOR_BGR2LAB)
-                hist = cv2.calcHist([lab], [0, 1, 2], None, [8, 8, 8], [0, 256, 0, 256, 0, 256])
-                cv2.normalize(hist, hist)
-                hist_features.extend(hist.flatten())
-                
-    lab_hist = np.array(hist_features, dtype=np.float32)
-    pil_img = Image.fromarray(cv2.cvtColor(cv_bgr_img, cv2.COLOR_BGR2RGB))
-    preprocess = transforms.Compose([transforms.Resize((224, 224)), transforms.ToTensor(), transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
-    tensor_img = preprocess(pil_img).unsqueeze(0)
-    
-    with torch.no_grad():
-        embedding = vector_model(tensor_img).squeeze().numpy()
-    norm = np.linalg.norm(embedding)
-    if norm > 0: embedding = embedding / norm
-
-    gray = cv2.cvtColor(cv_bgr_img, cv2.COLOR_BGR2GRAY)
-    laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
-    edges = cv2.Canny(gray, 100, 200)
-    edge_density = (np.sum(edges > 0) / (edgesআপনার আগের কোডের প্রতিটি ফিচার এবং লজিক ১০০ ভাগ ঠিক রেখে, কার্ভ ও ওভাল শেপগুলোর "ভাঙা লাইন" (jagged segments) দূর করার জন্য **Spline (স্মুথ কার্ভ)** টেকনিক এবং **নতুন স্লাইডার রেঞ্জ** কোডে ইন্টিগ্রেট করে দিয়েছি। 
-
-আমি "Convert Clear Photo" এবং "Process Photo and Convert" - দুটি জায়গাতেই Spline মেথড অ্যাড করে দিয়েছি, যাতে যেকোনো জায়গা থেকে DXF বানালেই লাইন একদম নিখুঁত রাউন্ড আসে।
-
-নিচে আপনার আপডেট করা সম্পূর্ণ কোডটি দেওয়া হলো। আপনি সরাসরি এটি কপি করে আপনার ফাইলে বসিয়ে রান করতে পারবেন (আপনাকে আর কিছু এডিট করতে হবে না):
-
-```python
-import os
-import time
-import cv2
-import numpy as np
-import streamlit as st
-from PIL import Image, ImageEnhance
-import torch
-import torchvision.models as models
-import torchvision.transforms as transforms
-import ezdxf
-
-# ==========================================
-# Crash-Proof Import for Rembg
-# ==========================================
-try:
-    from rembg import remove
-    REMBG_AVAILABLE = True
-except ImportError:
-    REMBG_AVAILABLE = False
-    st.warning("⚠️ Rembg ইনস্টল করা নেই! ব্যাকগ্রাউন্ড রিমুভ ছাড়া প্রসেস হবে। ইনস্টল করতে: pip install rembg")
+    st.warning("⚠️ Rembg ইনস্টল করা নেই! ব্যাকগ্রাউন্ড রিমুভ ছাড়া প্রসেস হবে। ইনস্টল করতে: pip install rembg")
 
 # ==========================================
 # ১. পেজ সেটআপ ও গ্লোবাল কনফিগারেশন
@@ -241,7 +140,7 @@ def deep_enhance_and_highlight(pil_img):
         else:
             img_array = np.array(pil_img)
         
-        # ৪. RGBA থেকে ক্লিয়ার RGB (Broadcasting Error fix)
+        # ৪. RGBA থেকে ক্লিয়ার RGB (Broadcasting Error fix)
         if img_array.ndim == 3 and img_array.shape[2] == 4:
             alpha = img_array[:, :, 3] / 255.0
             rgb = img_array[:, :, :3]
@@ -288,27 +187,13 @@ def export_smooth_dxf(contours, output_filename, smoothness_factor=0.002, min_ar
     for cnt in contours:
         area = cv2.contourArea(cnt)
         arc_len = cv2.arcLength(cnt, True)
-        
-        # খুব ছোট অংশগুলো বাদ দেওয়া হচ্ছে
         if area > min_area and arc_len > 15:
             epsilon = smoothness_factor * arc_len
             approx_cnt = cv2.approxPolyDP(cnt, epsilon, True)
-            
-            # SPLINE ইমপ্লিমেন্টেশন: যদি পয়েন্ট ৩টির বেশি হয় তবে স্মুথ কার্ভ হবে
-            if len(approx_cnt) >= 4:
-                # 3D কোঅর্ডিনেট হিসেবে পয়েন্ট জেনারেট (CAD এর জন্য)
-                pts = [(float(pt[0][0]), float(pt[0][1]), 0.0) for pt in approx_cnt]
-                # শেপটি যেন সম্পূর্ণ বন্ধ হয় তাই শুরুর পয়েন্ট শেষে যুক্ত করা হলো
-                pts.append(pts[0])
-                # Polyline এর বদলে SPLINE, যা কার্ভ/ওভাল শেপকে ভাঙতে দেবে না
-                msp.add_spline(pts)
-                valid_count += 1
-            elif len(approx_cnt) >= 2:
-                # ছোট বা সাধারণ শেপের জন্য Polyline
+            if len(approx_cnt) >= 2:
                 points = [(float(pt[0][0]), float(pt[0][1])) for pt in approx_cnt]
                 msp.add_lwpolyline(points, close=True)
                 valid_count += 1
-                
     doc.saveas(output_filename)
     return valid_count
 
@@ -472,15 +357,8 @@ elif app_mode == "📐 Auto DXF Converter":
                         arc_len = cv2.arcLength(cnt, True)
                         if arc_len > 15:
                             approx = cv2.approxPolyDP(cnt, 0.002 * arc_len, True)
-                            
-                            # এখানেও SPLINE অ্যাড করা হলো যেন ডিরেক্ট কনভার্ট করলেও লাইন না ভাঙে
-                            if len(approx) >= 4:
-                                pts = [(float(pt[0][0]), float(pt[0][1]), 0.0) for pt in approx]
-                                pts.append(pts[0])
-                                msp.add_spline(pts)
-                            elif len(approx) >= 2:
-                                points = [(float(pt[0][0]), float(pt[0][1])) for pt in approx]
-                                msp.add_lwpolyline(points, close=True)
+                            points = [(float(pt[0][0]), float(pt[0][1])) for pt in approx]
+                            msp.add_lwpolyline(points, close=True)
 
                     file_base_name = getattr(uploaded_file, 'name', 'Snapshot.jpg')
                     output_filename = f"{os.path.splitext(file_base_name)[0]}.dxf"
@@ -533,16 +411,7 @@ elif app_mode == "📐 Auto DXF Converter":
                     st.image(st.session_state["highlight_img"], caption="প্রসেসড ট্রেসিং ভিউ", use_container_width=True)
 
                 st.markdown("---")
-                
-                # স্লাইডারের রেঞ্জ নতুন করে আপডেট করা হয়েছে (0.000 থেকে 0.005)
-                smoothness = st.slider(
-                    "🎛️ Line Smoothness (Curve Fitting)", 
-                    min_value=0.0005, 
-                    max_value=0.0100, 
-                    value=0.0020, 
-                    step=0.0005,
-                    format="%.4f"
-                )
+                smoothness = st.slider("🎛️ লাইন স্মুথনেস", 0.001, 0.010, 0.0025, 0.0005)
                 
                 if st.button("📐 ২. স্মুথ DXF ফাইলে কনভার্ট করুন"):
                     with st.spinner("৩D অ্যাপের উপযোগী স্মুথ DXF তৈরি হচ্ছে..."):
@@ -553,7 +422,7 @@ elif app_mode == "📐 Auto DXF Converter":
 
                         if valid_lines > 0:
                             with open(output_filename, "rb") as file:
-                                st.success(f"🎉 সফলভাবে {valid_lines} টি স্মুথ ভেক্টর কার্ভ (SPLINE) তৈরি হয়েছে!")
+                                st.success(f"🎉 সফলভাবে {valid_lines} টি স্মুথ ভেক্টর কার্ভ তৈরি হয়েছে!")
                                 st.download_button("📥 স্মুথ 3D-রেডি DXF ডাউনলোড করুন", data=file, file_name=output_filename, mime="application/dxf")
                         else:
-                            st.warning("⚠️ কোনো আউটলাইন পাওয়া যায়নি।")
+                            st.warning("⚠️ কোনো আউটলাইন পাওয়া যায়নি।")
