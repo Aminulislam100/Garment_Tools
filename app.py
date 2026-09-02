@@ -13,67 +13,92 @@ from rembg import remove
 # ==========================================
 # ১. পেজ সেটআপ ও গ্লোবাল কনফিগারেশন
 # ==========================================
-st.set_page_config(page_title="Ultimate AI & Auto DXF Tool", layout="wide", page_icon="⚙️")
+st.set_page_config(page_title="Ultimate QC & Auto DXF Tool", layout="wide", page_icon="⚙️")
 
 # ==========================================
 # ২. প্রফেশনাল 3D CSS এবং থিম ফিক্স
 # ==========================================
 st.markdown("""
 <style>
-    /* 3D Top Navigation Bar Styling */
+    /* 3D Top Navigation Bar Styling - Centered & Professional */
+    div[data-testid="stRadio"] {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin-bottom: 2rem;
+    }
+    
     div[data-testid="stRadio"] > div[role="radiogroup"] {
         display: flex;
         flex-direction: row;
         justify-content: center;
-        background: linear-gradient(145deg, #e2e8f0, #cbd5e1);
-        padding: 15px;
-        border-radius: 20px;
-        gap: 25px;
-        box-shadow: inset 8px 8px 16px #94a3b8, inset -8px -8px 16px #ffffff;
-        margin-bottom: 30px;
+        background: #f1f5f9;
+        padding: 8px;
+        border-radius: 50px;
+        box-shadow: inset 5px 5px 10px #cbd5e1, inset -5px -5px 10px #ffffff;
+        gap: 15px;
     }
     
     div[data-testid="stRadio"] > div[role="radiogroup"] label {
-        background: linear-gradient(145deg, #f8fafc, #e2e8f0);
-        box-shadow: 6px 6px 12px #94a3b8, -6px -6px 12px #ffffff;
-        border-radius: 12px;
-        padding: 12px 35px;
+        background: transparent;
+        padding: 12px 40px;
+        border-radius: 40px;
         cursor: pointer;
         transition: all 0.3s ease;
-        border: 2px solid transparent;
+        border: none;
+    }
+    
+    /* Hide Default Radio Circles */
+    div[data-testid="stRadio"] > div[role="radiogroup"] label span[data-baseweb="radio"] {
+        display: none;
     }
     
     div[data-testid="stRadio"] > div[role="radiogroup"] label p {
-        color: #1e293b !important;
-        font-weight: 800 !important;
-        font-size: 22px !important;
+        color: #475569 !important;
+        font-weight: 700 !important;
+        font-size: 20px !important;
         margin: 0;
-        text-shadow: 2px 2px 4px rgba(255, 255, 255, 0.8);
     }
     
     /* Active State for 3D Navbar */
     div[data-testid="stRadio"] > div[role="radiogroup"] label[data-checked="true"] {
         background: linear-gradient(145deg, #1e40af, #3b82f6);
-        box-shadow: inset 5px 5px 10px #1e3a8a, inset -5px -5px 10px #60a5fa;
-        border: 2px solid #93c5fd;
+        box-shadow: 4px 4px 10px #93c5fd, -4px -4px 10px #ffffff;
     }
     
     div[data-testid="stRadio"] > div[role="radiogroup"] label[data-checked="true"] p {
         color: #ffffff !important;
-        text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.5);
+        text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
     }
 
-    /* Fixing Black on Black Container Issue */
+    /* Fixing Main Container */
     [data-testid="stContainer"] { 
-        border-radius: 0 0 16px 16px !important; 
-        padding: 24px !important; 
         background-color: #ffffff !important; 
         color: #0f172a !important; 
-        margin-bottom: 30px !important; 
     }
     
-    .fabric-box-1 { border: 6px solid #c2410c !important; border-top: none !important; box-shadow: 0 15px 35px rgba(194, 65, 12, 0.22) !important; }
-    .fabric-box-2 { border: 6px solid #047857 !important; border-top: none !important; box-shadow: 0 15px 35px rgba(4, 120, 87, 0.22) !important; }
+    /* Section Headers */
+    .step-header-1 {
+        background: linear-gradient(135deg, #c2410c 0%, #ea580c 100%);
+        padding: 12px 20px;
+        border-radius: 8px;
+        color: white;
+        font-weight: bold;
+        font-size: 18px;
+        box-shadow: 0 4px 10px rgba(194,65,12,0.3);
+        margin-bottom: 15px;
+    }
+    
+    .step-header-2 {
+        background: linear-gradient(135deg, #065f46 0%, #047857 100%);
+        padding: 12px 20px;
+        border-radius: 8px;
+        color: white;
+        font-weight: bold;
+        font-size: 18px;
+        box-shadow: 0 4px 10px rgba(4,120,87,0.3);
+        margin-bottom: 15px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -158,17 +183,17 @@ def load_cached_benchmarks(file_list, bench_dir):
 # ==========================================
 # ৪. মেইন নেভিগেশন (Top Menu)
 # ==========================================
-app_mode = st.radio("Navigation", ["🧵 Fabric Vision AI", "📐 Auto DXF Converter"], horizontal=True, label_visibility="collapsed")
+app_mode = st.radio("Navigation", ["🧵 QC Checker", "📐 Auto DXF Converter"], horizontal=True, label_visibility="collapsed")
 
 # ==========================================
-# APP 1: FABRIC VISION AI
+# APP 1: QC CHECKER (Fabric Vision AI)
 # ==========================================
-if app_mode == "🧵 Fabric Vision AI":
+if app_mode == "🧵 QC Checker":
     
     st.markdown("""
     <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%); padding: 32px 20px; border-radius: 18px; box-shadow: 0 15px 35px rgba(15, 23, 42, 0.4); border: 2px solid rgba(255, 255, 255, 0.15); text-align: center; margin-bottom: 30px;">
         <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 800; letter-spacing: 0.5px;">
-            🧵 Advanced Fabric AI Hybrid Checker
+            🧵 Advanced QC Checker
         </h1>
         <p style="color: #94a3b8; margin: 10px 0 0 0; font-size: 15px; font-weight: 600;">
             Deep Learning AI Vectors (Design) + CIELAB Spatial Grid (Shading)
@@ -183,7 +208,7 @@ if app_mode == "🧵 Fabric Vision AI":
     if 'cam_key' not in st.session_state:
         st.session_state.cam_key = 0
 
-    st.sidebar.header("⚙️ Settings & Hybrid Modes")
+    st.sidebar.header("⚙️ Settings & Modes")
     inspection_mode = st.sidebar.selectbox(
         "🔍 ইনস্পেকশন মোড বেছে নিন",
         (
@@ -194,18 +219,20 @@ if app_mode == "🧵 Fabric Vision AI":
             "🧶 সুতার ঘনত্ব / টেক্সচার (Density Check)"
         )
     )
-    pass_threshold = st.sidebar.slider("Minimum Match Score (%)", 50.0, 99.0, 78.0, 1.0)
-    st.sidebar.info("💡 **টিপস:** ভেক্টরাইজেশন ব্যবহারের ফলে কাপড়ে হালকা ভাঁজ বা ক্যামেরা সামান্য বাঁকা থাকলেও নিখুঁত রেজাল্ট আসবে।")
+    
+    # 🎛️ Threshold Customization
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 🎛️ থ্রেশহোল্ড কাস্টমাইজেশন")
+    st.sidebar.info("আপনার ফ্যাক্টরির মান অনুযায়ী আলাদা আলাদা পাস মার্ক সেট করুন।")
+    
+    color_threshold = st.sidebar.slider("🎨 কালার/শেড পাস মার্ক (%)", 50.0, 99.0, 78.0, 1.0)
+    pattern_threshold = st.sidebar.slider("✨ প্রিন্ট/প্যাটার্ন পাস মার্ক (%)", 50.0, 99.0, 80.0, 1.0)
+    texture_threshold = st.sidebar.slider("🧶 টেক্সচার/ঘনত্ব পাস মার্ক (%)", 50.0, 99.0, 70.0, 1.0)
 
-    # Master Sample Setup
-    st.markdown("""
-    <div style="background: linear-gradient(135deg, #c2410c 0%, #ea580c 100%); padding: 16px 22px; border-radius: 14px 14px 0 0; color: white; font-weight: bold; font-size: 18px; box-shadow: 0 6px 15px rgba(194,65,12,0.35); border: 6px solid #c2410c; border-bottom: none;">
-        🏆 ধাপ ১: বেঞ্চমার্ক ইনপুট (Master Sample Setup)
-    </div>
-    """, unsafe_allow_html=True)
-
-    with st.container():
-        st.markdown('<div class="fabric-box-1">', unsafe_allow_html=True)
+    # Master Sample Setup - With Native Streamlit Container Border
+    with st.container(border=True):
+        st.markdown('<div class="step-header-1">🏆 ধাপ ১: বেঞ্চমার্ক ইনপুট (Master Sample Setup)</div>', unsafe_allow_html=True)
+        
         bench_method = st.radio("মাস্টার স্যাম্পল কিভাবে দেবেন?", ("📁 গ্যালারি / ফাইল", "📸 লাইভ ক্যামেরা"), horizontal=True)
         st.markdown("---")
         
@@ -282,17 +309,11 @@ if app_mode == "🧵 Fabric Vision AI":
             if st.button("🗑️ সব মাস্টার স্যাম্পল মুছুন"):
                 for f in os.listdir(BENCHMARK_DIR): os.remove(os.path.join(BENCHMARK_DIR, f))
                 st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
 
-    # Scanner Setup
-    st.markdown("""
-    <div style="background: linear-gradient(135deg, #065f46 0%, #047857 100%); padding: 16px 22px; border-radius: 14px 14px 0 0; color: white; font-weight: bold; font-size: 18px; box-shadow: 0 6px 15px rgba(4,120,87,0.35); border: 6px solid #047857; border-bottom: none;">
-        🔬 ধাপ ২: টেস্টিং স্ক্যানার (Production Check)
-    </div>
-    """, unsafe_allow_html=True)
-
-    with st.container():
-        st.markdown('<div class="fabric-box-2">', unsafe_allow_html=True)
+    # Scanner Setup - With Native Streamlit Container Border
+    st.write("") # Spacer
+    with st.container(border=True):
+        st.markdown('<div class="step-header-2">🔬 ধাপ ২: টেস্টিং স্ক্যানার (Production Check)</div>', unsafe_allow_html=True)
         final_benchmark_files = [f for f in os.listdir(BENCHMARK_DIR) if f.endswith(('.png', '.jpg', '.jpeg'))]
         
         if not final_benchmark_files:
@@ -323,11 +344,11 @@ if app_mode == "🧵 Fabric Vision AI":
                     d_color, d_pattern, d_texture = 0.0, 0.0, 0.0
                     
                     for name, b_path, b_hist, b_embed, b_lap, b_edge in benchmark_data:
-                        # 1. Color/Shading Match (Bhattacharyya Distance)
+                        # 1. Color/Shading Match
                         b_distance = cv2.compareHist(b_hist, cam_hist, cv2.HISTCMP_BHATTACHARYYA)
                         color_pct = max(0.0, (1.0 - (b_distance * 1.5)) * 100.0)
                         
-                        # 2. Design/Pattern Match (Cosine Similarity - Strict Thresholding)
+                        # 2. Design/Pattern Match
                         cosine_sim = np.dot(b_embed, cam_embed)
                         strict_pattern_threshold = 0.85 
                         if cosine_sim < strict_pattern_threshold:
@@ -335,7 +356,7 @@ if app_mode == "🧵 Fabric Vision AI":
                         else:
                             pattern_pct = ((cosine_sim - strict_pattern_threshold) / (1.0 - strict_pattern_threshold)) * 100.0
                         
-                        # 3. Texture Difference (Laplacian Variance)
+                        # 3. Texture Difference
                         lap_diff = abs(b_lap - cam_lap)
                         texture_pct = max(0.0, 100.0 - (lap_diff / (max(b_lap, 1e-5)) * 80.0))
                         
@@ -343,10 +364,9 @@ if app_mode == "🧵 Fabric Vision AI":
                         edge_diff = abs(b_edge - cam_edge)
                         edge_pct = max(0.0, 100.0 - (edge_diff / (max(b_edge, 1e-5)) * 100.0))
                         
-                        # Combined Texture Score (Weighted Average)
                         final_texture_pct = (texture_pct * 0.6) + (edge_pct * 0.4)
                         
-                        # Calculation based on Inspection Mode
+                        # Calculate Overall Score
                         if "শুধুমাত্র কালার/শেডিং" in inspection_mode:
                             final_score = color_pct
                         elif "শুধুমাত্র ডিজাইন/প্রিনট" in inspection_mode:
@@ -356,7 +376,6 @@ if app_mode == "🧵 Fabric Vision AI":
                         elif "কালার + ডিজাইন" in inspection_mode:
                             final_score = (color_pct * 0.50) + (pattern_pct * 0.50)
                         else:  
-                            # All-in-One Hybrid Mode
                             final_score = (color_pct * 0.40) + (pattern_pct * 0.40) + (final_texture_pct * 0.20)
                         
                         if final_score > best_match_score:
@@ -365,17 +384,41 @@ if app_mode == "🧵 Fabric Vision AI":
                             d_color, d_pattern, d_texture = color_pct, pattern_pct, final_texture_pct
                     
                     st.write(f"**চেকিং মোড:** `{inspection_mode}`")
-                    st.markdown(f"### **ফাইনাল একুরেসি:** `{best_match_score:.2f}%`")
+                    st.markdown(f"### **ওভারঅল একুরেসি:** `{best_match_score:.2f}%`")
                     
                     col_m1, col_m2, col_m3 = st.columns(3)
-                    col_m1.metric("🎨 Color/Shade Score", f"{d_color:.1f}%")
-                    col_m2.metric("✨ AI Vector Pattern", f"{d_pattern:.1f}%")
-                    col_m3.metric("🧶 Texture Density", f"{d_texture:.1f}%")
+                    col_m1.metric("🎨 Color Score", f"{d_color:.1f}%", f"Target: {color_threshold}%")
+                    col_m2.metric("✨ Pattern Score", f"{d_pattern:.1f}%", f"Target: {pattern_threshold}%")
+                    col_m3.metric("🧶 Texture Score", f"{d_texture:.1f}%", f"Target: {texture_threshold}%")
                     
-                    if best_match_score >= pass_threshold:
+                    # 🎛️ Customized Passing Logic
+                    is_pass = False
+                    fail_reasons = []
+
+                    if "শুধুমাত্র কালার/শেডিং" in inspection_mode:
+                        is_pass = d_color >= color_threshold
+                        if not is_pass: fail_reasons.append("কালার/শেড ম্যাচ করেনি")
+                    elif "শুধুমাত্র ডিজাইন/প্রিনট" in inspection_mode:
+                        is_pass = d_pattern >= pattern_threshold
+                        if not is_pass: fail_reasons.append("ডিজাইন/প্যাটার্ন ম্যাচ করেনি")
+                    elif "সুতার ঘনত্ব / টেক্সচার" in inspection_mode:
+                        is_pass = d_texture >= texture_threshold
+                        if not is_pass: fail_reasons.append("টেক্সচার/ঘনত্ব ম্যাচ করেনি")
+                    elif "কালার + ডিজাইন" in inspection_mode:
+                        is_pass = (d_color >= color_threshold) and (d_pattern >= pattern_threshold)
+                        if d_color < color_threshold: fail_reasons.append("কালার")
+                        if d_pattern < pattern_threshold: fail_reasons.append("ডিজাইন")
+                    else:  
+                        # All-in-One Mode requires ALL active thresholds to pass
+                        is_pass = (d_color >= color_threshold) and (d_pattern >= pattern_threshold) and (d_texture >= texture_threshold)
+                        if d_color < color_threshold: fail_reasons.append("কালার")
+                        if d_pattern < pattern_threshold: fail_reasons.append("ডিজাইন")
+                        if d_texture < texture_threshold: fail_reasons.append("টেক্সচার")
+
+                    if is_pass:
                         st.success("### 🎉 PASS - প্রোডাক্ট কোয়ালিটি সঠিক আছে!")
                     else:
-                        st.error("### ❌ FAIL - রিজেক্টেড! (পার্থক্য পাওয়া গেছে)")
+                        st.error(f"### ❌ FAIL - রিজেক্টেড! (ত্রুটি: {', '.join(fail_reasons)})")
                         
                     st.markdown("---")
                     v_col1, v_col2 = st.columns(2)
@@ -384,7 +427,6 @@ if app_mode == "🧵 Fabric Vision AI":
                     with v_col2:
                         if best_match_path:
                             st.image(cv2.cvtColor(cv2.imread(best_match_path), cv2.COLOR_BGR2RGB), caption=f"ম্যাচিং মাস্টার: {best_match_name}", use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
 
 # ==========================================
 # APP 2: AUTO DXF CONVERTER
@@ -399,7 +441,7 @@ elif app_mode == "📐 Auto DXF Converter":
 
     if page == "Convert Clear Photo":
         st.title("📐 Convert Clear Photo")
-        st.write("আপনার জ্যামিতিক বা টাইলসের পরিষ্কার ছবি আপলোড করুন অথবা লাইভ ক্যামেরা দিয়ে তুলুন, এক ক্লিকে DXF ডাউনলোড করুন।")
+        st.write("আপনার জ্যামিতিক বা টাইলসের পরিষ্কার ছবি আপলোড করুন অথবা লাইভ ক্যামেরা দিয়ে তুলুন, এক ক্লিকে DXF ডাউনলোড করুন।")
 
         tab1, tab2 = st.tabs(["📁 ফাইল আপলোড", "📸 লাইভ ক্যামেরা"])
         uploaded_file = None
@@ -408,7 +450,7 @@ elif app_mode == "📐 Auto DXF Converter":
             up_file = st.file_uploader("একটি ছবি বাছাই করুন", type=["jpg", "jpeg", "png", "bmp"], key="dxf_up1")
             if up_file: uploaded_file = up_file
         with tab2:
-            cam_file = st.camera_input("ক্যামেরা দিয়ে ছবি তুলুন", key="dxf_cam1")
+            cam_file = st.camera_input("ক্যামেরা দিয়ে ছবি তুলুন", key="dxf_cam1")
             if cam_file: uploaded_file = cam_file
 
         if uploaded_file is not None:
@@ -418,7 +460,7 @@ elif app_mode == "📐 Auto DXF Converter":
                 img = cv2.imdecode(file_bytes, cv2.IMREAD_GRAYSCALE)
 
                 if img is None:
-                    st.error("⚠️ ছবি সঠিকভাবে লোড করা সম্ভব হয়নি! আবার চেষ্টা করুন।")
+                    st.error("⚠️ ছবি সঠিকভাবে লোড করা সম্ভব হয়নি! আবার চেষ্টা করুন।")
                 else:
                     st.image(img, caption="আপনার ইনপুট ছবি", width=300)
 
@@ -438,7 +480,7 @@ elif app_mode == "📐 Auto DXF Converter":
                                     count += 1
 
                             if count == 0:
-                                st.warning("⚠️ কোনো আউটলাইন/অবজেক্ট সনাক্ত করা যায়নি। অন্য পরিষ্কার ছবি চেষ্টা করুন।")
+                                st.warning("⚠️ কোনো আউটলাইন/অবজেক্ট সনাক্ত করা যায়নি। অন্য পরিষ্কার ছবি চেষ্টা করুন।")
                             else:
                                 file_base_name = getattr(uploaded_file, 'name', 'Camera_Snapshot.jpg')
                                 output_filename = f"{os.path.splitext(file_base_name)[0]}.dxf"
@@ -467,7 +509,7 @@ elif app_mode == "📐 Auto DXF Converter":
             up_file = st.file_uploader("একটি ছবি বাছাই করুন", type=["jpg", "jpeg", "png", "bmp"], key="dxf_up2")
             if up_file: uploaded_file = up_file
         with tab2:
-            cam_file = st.camera_input("ক্যামেরা দিয়ে ছবি তুলুন", key="dxf_cam2")
+            cam_file = st.camera_input("ক্যামেরা দিয়ে ছবি তুলুন", key="dxf_cam2")
             if cam_file: uploaded_file = cam_file
 
         if uploaded_file is not None:
