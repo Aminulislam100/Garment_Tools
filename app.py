@@ -1,70 +1,88 @@
 import os
 import time
 import cv2
-import ezdxf
 import numpy as np
 import streamlit as st
-from rembg import remove
 from PIL import Image
 import torch
 import torchvision.models as models
 import torchvision.transforms as transforms
+import ezdxf
+from rembg import remove
 
 # ==========================================
-# গ্লোবাল পেজ কনফিগারেশন
+# ১. পেজ সেটআপ ও গ্লোবাল কনফিগারেশন
 # ==========================================
-st.set_page_config(page_title="AI Smart Suite", layout="wide", page_icon="🚀")
+st.set_page_config(page_title="Ultimate AI & Auto DXF Tool", layout="wide", page_icon="⚙️")
 
 # ==========================================
-# Top Navigation Bar Styling (CSS & UI)
+# ২. প্রফেশনাল 3D CSS এবং থিম ফিক্স
 # ==========================================
 st.markdown("""
 <style>
-/* Top Nav Bar Styling */
-.stRadio > div[role="radiogroup"] {
-    display: flex;
-    justify-content: center;
-    background: #0f172a;
-    padding: 10px;
-    border-radius: 12px;
-    gap: 15px;
-    margin-bottom: 25px;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-}
-.stRadio > div[role="radiogroup"] > label {
-    background-color: #1e293b;
-    color: #f8fafc !important;
-    padding: 10px 24px !important;
-    border-radius: 8px !important;
-    border: 1px solid #334155 !important;
-    font-weight: 600 !important;
-    cursor: pointer;
-    transition: all 0.3s ease;
-}
-.stRadio > div[role="radiogroup"] > label:hover {
-    background-color: #334155;
-    border-color: #3b82f6 !important;
-}
-.stRadio > div[role="radiogroup"] > label[data-checked="true"] {
-    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
-    color: white !important;
-    border-color: #60a5fa !important;
-    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.4);
-}
+    /* 3D Top Navigation Bar Styling */
+    div[data-testid="stRadio"] > div[role="radiogroup"] {
+        display: flex;
+        flex-direction: row;
+        justify-content: center;
+        background: linear-gradient(145deg, #e2e8f0, #cbd5e1);
+        padding: 15px;
+        border-radius: 20px;
+        gap: 25px;
+        box-shadow: inset 8px 8px 16px #94a3b8, inset -8px -8px 16px #ffffff;
+        margin-bottom: 30px;
+    }
+    
+    div[data-testid="stRadio"] > div[role="radiogroup"] label {
+        background: linear-gradient(145deg, #f8fafc, #e2e8f0);
+        box-shadow: 6px 6px 12px #94a3b8, -6px -6px 12px #ffffff;
+        border-radius: 12px;
+        padding: 12px 35px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        border: 2px solid transparent;
+    }
+    
+    div[data-testid="stRadio"] > div[role="radiogroup"] label p {
+        color: #1e293b !important;
+        font-weight: 800 !important;
+        font-size: 22px !important;
+        margin: 0;
+        text-shadow: 2px 2px 4px rgba(255, 255, 255, 0.8); /* 3D Text Effect */
+    }
+    
+    /* Active State for 3D Navbar */
+    div[data-testid="stRadio"] > div[role="radiogroup"] label[data-checked="true"] {
+        background: linear-gradient(145deg, #1e40af, #3b82f6);
+        box-shadow: inset 5px 5px 10px #1e3a8a, inset -5px -5px 10px #60a5fa;
+        border: 2px solid #93c5fd;
+    }
+    
+    div[data-testid="stRadio"] > div[role="radiogroup"] label[data-checked="true"] p {
+        color: #ffffff !important;
+        text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.5); /* Deep 3D Shadow for Active Text */
+    }
+
+    /* Fixing Black on Black Container Issue */
+    [data-testid="stContainer"] { 
+        border-radius: 0 0 16px 16px !important; 
+        padding: 24px !important; 
+        background-color: #ffffff !important; 
+        color: #0f172a !important; /* Explicitly dark text */
+        margin-bottom: 30px !important; 
+    }
+    /* Applying specific borders for Fabric Mod containers */
+    .fabric-box-1 { border: 6px solid #c2410c !important; border-top: none !important; box-shadow: 0 15px 35px rgba(194, 65, 12, 0.22) !important; }
+    .fabric-box-2 { border: 6px solid #047857 !important; border-top: none !important; box-shadow: 0 15px 35px rgba(4, 120, 87, 0.22) !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# Top Navbar Menu
-app_mode = st.radio(
-    "Main Navigation",
-    ["🧵 Fabric Vision AI", "📐 DXF Converter"],
-    horizontal=True,
-    label_visibility="collapsed"
-)
+# ==========================================
+# ৩. ডিপ লার্নিং ও গ্লোবাল ফাংশনস (Fabric AI)
+# ==========================================
+BENCHMARK_DIR = "benchmark"
+os.makedirs(BENCHMARK_DIR, exist_ok=True)
 
-# ==========================================
-# গ্লোবাল ফাংশনসমূহ (Fabric Vision AI এর জন্য)
-# ==========================================
 @st.cache_resource(show_spinner="AI ভেক্টর ইঞ্জিন লোড হচ্ছে...")
 def load_vector_model():
     weights = models.MobileNet_V3_Small_Weights.DEFAULT
@@ -75,7 +93,8 @@ def load_vector_model():
 
 def resize_with_aspect_ratio(image, width=None, height=None, inter=cv2.INTER_AREA):
     (h, w) = image.shape[:2]
-    if width is None and height is None: return image
+    if width is None and height is None:
+        return image
     if width is None:
         r = height / float(h)
         dim = (int(w * r), height)
@@ -136,19 +155,17 @@ def load_cached_benchmarks(file_list, bench_dir):
             data.append((b_file, b_path, lab_hist, embedding, lap_var, edge_density))
     return data
 
+
 # ==========================================
-# পেজ ১: Fabric Vision AI
+# ৪. মেইন নেভিগেশন (Top Menu)
+# ==========================================
+app_mode = st.radio("Navigation", ["🧵 Fabric Vision AI", "📐 Auto DXF Converter"], horizontal=True, label_visibility="collapsed")
+
+# ==========================================
+# APP 1: FABRIC VISION AI
 # ==========================================
 if app_mode == "🧵 Fabric Vision AI":
     
-    st.markdown("""
-    <style>
-    [data-testid="stContainer"] { border-radius: 0 0 16px 16px !important; padding: 24px !important; background-color: #ffffff !important; margin-bottom: 30px !important; }
-    [data-testid="stContainer"]:nth-of-type(1) { border: 6px solid #c2410c !important; border-top: none !important; box-shadow: 0 15px 35px rgba(194, 65, 12, 0.22) !important; }
-    [data-testid="stContainer"]:nth-of-type(2) { border: 6px solid #047857 !important; border-top: none !important; box-shadow: 0 15px 35px rgba(4, 120, 87, 0.22) !important; }
-    </style>
-    """, unsafe_allow_html=True)
-
     st.markdown("""
     <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%); padding: 32px 20px; border-radius: 18px; box-shadow: 0 15px 35px rgba(15, 23, 42, 0.4); border: 2px solid rgba(255, 255, 255, 0.15); text-align: center; margin-bottom: 30px;">
         <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 800; letter-spacing: 0.5px;">
@@ -160,9 +177,6 @@ if app_mode == "🧵 Fabric Vision AI":
     </div>
     """, unsafe_allow_html=True)
 
-    BENCHMARK_DIR = "benchmark"
-    os.makedirs(BENCHMARK_DIR, exist_ok=True)
-
     if 'captured_benchmarks' not in st.session_state:
         st.session_state.captured_benchmarks = []
     if 'last_cam_hash' not in st.session_state:
@@ -170,7 +184,7 @@ if app_mode == "🧵 Fabric Vision AI":
     if 'cam_key' not in st.session_state:
         st.session_state.cam_key = 0
 
-    st.sidebar.header("⚙️ Fabric Vision Settings")
+    st.sidebar.header("⚙️ Settings & Hybrid Modes")
     inspection_mode = st.sidebar.selectbox(
         "🔍 ইনস্পেকশন মোড বেছে নিন",
         (
@@ -182,14 +196,17 @@ if app_mode == "🧵 Fabric Vision AI":
         )
     )
     pass_threshold = st.sidebar.slider("Minimum Match Score (%)", 50.0, 99.0, 78.0, 1.0)
+    st.sidebar.info("💡 **টিপস:** ভেক্টরাইজেশন ব্যবহারের ফলে কাপড়ে হালকা ভাঁজ বা ক্যামেরা সামান্য বাঁকা থাকলেও নিখুঁত রেজাল্ট আসবে।")
 
+    # Master Sample Setup
     st.markdown("""
     <div style="background: linear-gradient(135deg, #c2410c 0%, #ea580c 100%); padding: 16px 22px; border-radius: 14px 14px 0 0; color: white; font-weight: bold; font-size: 18px; box-shadow: 0 6px 15px rgba(194,65,12,0.35); border: 6px solid #c2410c; border-bottom: none;">
         🏆 ধাপ ১: বেঞ্চমার্ক ইনপুট (Master Sample Setup)
     </div>
     """, unsafe_allow_html=True)
 
-    with st.container(border=True):
+    with st.container():
+        st.markdown('<div class="fabric-box-1">', unsafe_allow_html=True)
         bench_method = st.radio("মাস্টার স্যাম্পল কিভাবে দেবেন?", ("📁 গ্যালারি / ফাইল", "📸 লাইভ ক্যামেরা"), horizontal=True)
         st.markdown("---")
         
@@ -226,7 +243,7 @@ if app_mode == "🧵 Fabric Vision AI":
                 if st.session_state.last_cam_hash != cam_bytes:
                     st.session_state.captured_benchmarks.append(cam_bytes)
                     st.session_state.last_cam_hash = cam_bytes
-                
+                    
             if len(st.session_state.captured_benchmarks) > 0:
                 st.info(f"📸 তোলা হয়েছে: {len(st.session_state.captured_benchmarks)} টি স্যাম্পল")
                 col_save1, col_save2, col_save3 = st.columns(3)
@@ -266,14 +283,17 @@ if app_mode == "🧵 Fabric Vision AI":
             if st.button("🗑️ সব মাস্টার স্যাম্পল মুছুন"):
                 for f in os.listdir(BENCHMARK_DIR): os.remove(os.path.join(BENCHMARK_DIR, f))
                 st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
 
+    # Scanner Setup
     st.markdown("""
     <div style="background: linear-gradient(135deg, #065f46 0%, #047857 100%); padding: 16px 22px; border-radius: 14px 14px 0 0; color: white; font-weight: bold; font-size: 18px; box-shadow: 0 6px 15px rgba(4,120,87,0.35); border: 6px solid #047857; border-bottom: none;">
         🔬 ধাপ ২: টেস্টিং স্ক্যানার (Production Check)
     </div>
     """, unsafe_allow_html=True)
 
-    with st.container(border=True):
+    with st.container():
+        st.markdown('<div class="fabric-box-2">', unsafe_allow_html=True)
         final_benchmark_files = [f for f in os.listdir(BENCHMARK_DIR) if f.endswith(('.png', '.jpg', '.jpeg'))]
         
         if not final_benchmark_files:
@@ -331,7 +351,7 @@ if app_mode == "🧵 Fabric Vision AI":
                             best_match_score = final_score
                             best_match_path, best_match_name = b_path, name
                             d_color, d_pattern, d_texture = color_pct, pattern_pct, texture_pct
-                
+                    
                     st.write(f"**চেকিং মোড:** `{inspection_mode}`")
                     st.markdown(f"### **ফাইনাল একুরেসি:** `{best_match_score:.2f}%`")
                     
@@ -352,38 +372,42 @@ if app_mode == "🧵 Fabric Vision AI":
                     with v_col2:
                         if best_match_path:
                             st.image(cv2.cvtColor(cv2.imread(best_match_path), cv2.COLOR_BGR2RGB), caption=f"ম্যাচিং মাস্টার: {best_match_name}", use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
 
 # ==========================================
-# পেজ ২: DXF Converter (With Live Camera Tabs)
+# APP 2: DXF CONVERTER (With Live Camera Added)
 # ==========================================
-elif app_mode == "📐 DXF Converter":
+elif app_mode == "📐 Auto DXF Converter":
     
-    st.sidebar.markdown("### 📐 DXF Options")
-    dxf_page = st.sidebar.radio("আপনার প্রয়োজনীয় টুলটি বেছে নিন:", ["Convert Clear Photo", "Process Photo and Convert"])
+    st.sidebar.title("📐 DXF মেনু")
+    page = st.sidebar.radio("আপনার প্রয়োজনীয় টুলটি বেছে নিন:", ["Convert Clear Photo", "Process Photo and Convert"])
 
-    if dxf_page == "Convert Clear Photo":
-        st.markdown("## 📐 Convert Clear Photo")
-        st.write("আপনার জ্যামিতিক বা টাইলসের পরিষ্কার ছবি দিন, এক ক্লিকে DXF ডাউনলোড করুন।")
+    st.sidebar.markdown("---")
+    st.sidebar.info("১. **Convert Clear Photo:** শুধু পরিষ্কার ছবির জন্য দ্রুত কনভার্টার।\n২. **Process Photo:** অস্পষ্ট ছবির ব্যাকগ্রাউন্ড রিমুভ ও লাইন শার্প করার অ্যাডভান্সড টুল।")
 
-        # Tabs for clear separation of Input modes
-        dxf_tab1, dxf_tab2 = st.tabs(["📁 ফাইল আপলোড", "📸 লাইভ ক্যামেরা"])
+    if page == "Convert Clear Photo":
+        st.title("📐 Convert Clear Photo")
+        st.write("আপনার জ্যামিতিক বা টাইলসের পরিষ্কার ছবি আপলোড করুন অথবা লাইভ ক্যামেরা দিয়ে তুলুন, এক ক্লিকে DXF ডাউনলোড করুন।")
+
+        tab1, tab2 = st.tabs(["📁 ফাইল আপলোড", "📸 লাইভ ক্যামেরা"])
+        uploaded_file = None
         
-        with dxf_tab1:
-            dxf_file = st.file_uploader("একটি ছবি বাছাই করুন", type=["jpg", "jpeg", "png", "bmp"], key="dxf_up1")
-        with dxf_tab2:
-            dxf_cam = st.camera_input("ক্যামেরা দিয়ে ছবি তুলুন", key="dxf_cam1")
+        with tab1:
+            up_file = st.file_uploader("একটি ছবি বাছাই করুন", type=["jpg", "jpeg", "png", "bmp"], key="dxf_up1")
+            if up_file: uploaded_file = up_file
+        with tab2:
+            cam_file = st.camera_input("ক্যামেরা দিয়ে ছবি তুলুন", key="dxf_cam1")
+            if cam_file: uploaded_file = cam_file
 
-        # Process whichever is provided
-        uploaded_dxf = dxf_file if dxf_file else dxf_cam
-
-        if uploaded_dxf is not None:
-            file_bytes = np.asarray(bytearray(uploaded_dxf.read()), dtype=np.uint8)
+        if uploaded_file is not None:
+            file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
             img = cv2.imdecode(file_bytes, cv2.IMREAD_GRAYSCALE)
 
             if img is not None:
-                st.image(img, caption="ইনপুট করা ছবি", width=300)
+                st.image(img, caption="আপনার ইনপুট ছবি", width=300)
 
-                if st.button("⚡ DXF ফাইলে কনভার্ট করুন", key="btn1", type="primary"):
+                if st.button("⚡ DXF ফাইলে কনভার্ট করুন", key="btn1"):
                     with st.spinner("প্রসেসিং হচ্ছে, অনুগ্রহ করে অপেক্ষা করুন..."):
                         _, thresh = cv2.threshold(img, 127, 255, cv2.THRESH_BINARY_INV)
                         contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
@@ -396,8 +420,9 @@ elif app_mode == "📐 DXF Converter":
                                 points = [(float(pt[0][0]), float(pt[0][1])) for pt in cnt]
                                 msp.add_lwpolyline(points, close=True)
 
-                        file_prefix = uploaded_dxf.name.split('.')[0] if hasattr(uploaded_dxf, 'name') else "Camera_Input"
-                        output_filename = f"{file_prefix}.dxf"
+                        # Handle name dynamically based on upload type
+                        file_base_name = uploaded_file.name if hasattr(uploaded_file, 'name') else "Camera_Snapshot"
+                        output_filename = f"{os.path.splitext(file_base_name)[0]}.dxf"
                         doc.saveas(output_filename)
 
                         with open(output_filename, "rb") as file:
@@ -410,24 +435,25 @@ elif app_mode == "📐 DXF Converter":
                                 key="dl_btn1"
                             )
 
-    elif dxf_page == "Process Photo and Convert":
-        st.markdown("## ⚙️ Process Photo and Convert")
+    elif page == "Process Photo and Convert":
+        st.title("⚙️ Process Photo and Convert")
         st.write("এই টুলটি স্বয়ংক্রিয়ভাবে ব্যাকগ্রাউন্ড রিমুভ, অটো কন্ট্রাস্ট এবং শার্প করে নিখুঁত DXF তৈরি করবে।")
 
-        dxf_ptab1, dxf_ptab2 = st.tabs(["📁 ফাইল আপলোড", "📸 লাইভ ক্যামেরা"])
+        tab1, tab2 = st.tabs(["📁 ফাইল আপলোড", "📸 লাইভ ক্যামেরা"])
+        uploaded_file = None
         
-        with dxf_ptab1:
-            dxf_pfile = st.file_uploader("একটি ছবি বাছাই করুন", type=["jpg", "jpeg", "png", "bmp"], key="dxf_up2")
-        with dxf_ptab2:
-            dxf_pcam = st.camera_input("ক্যামেরা দিয়ে ছবি তুলুন", key="dxf_cam2")
+        with tab1:
+            up_file = st.file_uploader("একটি ছবি বাছাই করুন", type=["jpg", "jpeg", "png", "bmp"], key="dxf_up2")
+            if up_file: uploaded_file = up_file
+        with tab2:
+            cam_file = st.camera_input("ক্যামেরা দিয়ে ছবি তুলুন", key="dxf_cam2")
+            if cam_file: uploaded_file = cam_file
 
-        uploaded_dxf_p = dxf_pfile if dxf_pfile else dxf_pcam
-
-        if uploaded_dxf_p is not None:
-            input_image = Image.open(uploaded_dxf_p)
+        if uploaded_file is not None:
+            input_image = Image.open(uploaded_file)
             st.image(input_image, caption="অরিজিনাল ছবি", width=300)
 
-            if st.button("⚡ প্রসেস ও DXF ফাইলে কনভার্ট করুন", key="btn2", type="primary"):
+            if st.button("⚡ প্রসেস ও DXF ফাইলে কনভার্ট করুন", key="btn2"):
                 with st.spinner("অ্যাডভান্সড প্রসেসিং হচ্ছে (ব্যাকগ্রাউন্ড রিমুভ ও শার্পেন)... দয়া করে অপেক্ষা করুন।"):
                     try:
                         img_no_bg = remove(input_image)
@@ -448,7 +474,9 @@ elif app_mode == "📐 DXF Converter":
                         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
                         enhanced_gray = clahe.apply(gray)
 
-                        kernel = np.array([[-1, -1, -1], [-1,  9, -1], [-1, -1, -1]])
+                        kernel = np.array([[-1, -1, -1],
+                                           [-1,  9, -1],
+                                           [-1, -1, -1]])
                         sharpened = cv2.filter2D(enhanced_gray, -1, kernel)
                         
                         st.image(sharpened, caption="ক্লিন ও শার্প করা ছবি (ট্রেসিংয়ের জন্য প্রস্তুত)", width=300)
@@ -464,8 +492,8 @@ elif app_mode == "📐 DXF Converter":
                                 points = [(float(pt[0][0]), float(pt[0][1])) for pt in cnt]
                                 msp.add_lwpolyline(points, close=True)
 
-                        file_prefix = uploaded_dxf_p.name.split('.')[0] if hasattr(uploaded_dxf_p, 'name') else "Camera_Processed"
-                        output_filename = f"{file_prefix}_Advanced.dxf"
+                        file_base_name = uploaded_file.name if hasattr(uploaded_file, 'name') else "Camera_Snapshot"
+                        output_filename = f"{os.path.splitext(file_base_name)[0]}_Processed.dxf"
                         doc.saveas(output_filename)
 
                         with open(output_filename, "rb") as file:
