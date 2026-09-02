@@ -17,7 +17,7 @@ try:
     REMBG_AVAILABLE = True
 except ImportError:
     REMBG_AVAILABLE = False
-    st.warning("⚠️ Rembg ইনস্টল করা নেই! ব্যাকগ্রাউন্ড রিমুভ ছাড়া প্রসেস হবে। ইনস্টল করতে: pip install rembg")
+    st.warning("⚠️ Rembg ইনস্টল করা নেই! ব্যাকগ্রাউন্ড রিমুভ ছাড়া প্রসেস হবে। ইনস্টল করতে: pip install rembg")
 
 # ==========================================
 # ১. পেজ সেটআপ ও গ্লোবাল কনফিগারেশন
@@ -140,7 +140,7 @@ def deep_enhance_and_highlight(pil_img):
         else:
             img_array = np.array(pil_img)
         
-        # ৪. RGBA থেকে ক্লিয়ার RGB (Broadcasting Error fix)
+        # ৪. RGBA থেকে ক্লিয়ার RGB (Broadcasting Error fix)
         if img_array.ndim == 3 and img_array.shape[2] == 4:
             alpha = img_array[:, :, 3] / 255.0
             rgb = img_array[:, :, :3]
@@ -188,12 +188,26 @@ def export_smooth_dxf(contours, output_filename, smoothness_factor=0.002, min_ar
         area = cv2.contourArea(cnt)
         arc_len = cv2.arcLength(cnt, True)
         if area > min_area and arc_len > 15:
+            # ১. অতিরিক্ত নয়েজ পয়েন্ট কমানো (অরিজিনাল শেপ অক্ষুণ্ণ রেখে)
             epsilon = smoothness_factor * arc_len
             approx_cnt = cv2.approxPolyDP(cnt, epsilon, True)
-            if len(approx_cnt) >= 2:
-                points = [(float(pt[0][0]), float(pt[0][1])) for pt in approx_cnt]
-                msp.add_lwpolyline(points, close=True)
+            
+            # ২. পয়েন্টগুলোকে DXF স্থানাঙ্কে (Coordinates) রূপান্তর করা
+            # CAD সফটওয়্যারে Y-অক্ষ সাধারণত উল্টো থাকে, তাই -y করা হয়েছে।
+            points = [(float(pt[0][0]), float(-pt[0][1]), 0) for pt in approx_cnt]
+            
+            if len(points) >= 4:
+                # লুপটি বন্ধ করতে প্রথম পয়েন্ট শেষে যুক্ত করা
+                points.append(points[0]) 
+                # ৩. Polyline-এর বদলে SPLINE ব্যবহার - এটি লাইন ভাঙতে দেবে না
+                msp.add_spline(points)
                 valid_count += 1
+            elif len(points) >= 2:
+                # খুব ছোট কোনো শেপ থাকলে সাধারণ পলিলাইন
+                pts_2d = [(p[0], p[1]) for p in points]
+                msp.add_lwpolyline(pts_2d, close=True)
+                valid_count += 1
+                
     doc.saveas(output_filename)
     return valid_count
 
@@ -357,8 +371,15 @@ elif app_mode == "📐 Auto DXF Converter":
                         arc_len = cv2.arcLength(cnt, True)
                         if arc_len > 15:
                             approx = cv2.approxPolyDP(cnt, 0.002 * arc_len, True)
-                            points = [(float(pt[0][0]), float(pt[0][1])) for pt in approx]
-                            msp.add_lwpolyline(points, close=True)
+                            # স্প্লাইন কার্ভ অ্যাপ্লাই করা হলো
+                            points = [(float(pt[0][0]), float(-pt[0][1]), 0) for pt in approx]
+                            
+                            if len(points) >= 4:
+                                points.append(points[0])
+                                msp.add_spline(points)
+                            elif len(points) >= 2:
+                                pts_2d = [(p[0], p[1]) for p in points]
+                                msp.add_lwpolyline(pts_2d, close=True)
 
                     file_base_name = getattr(uploaded_file, 'name', 'Snapshot.jpg')
                     output_filename = f"{os.path.splitext(file_base_name)[0]}.dxf"
@@ -411,7 +432,8 @@ elif app_mode == "📐 Auto DXF Converter":
                     st.image(st.session_state["highlight_img"], caption="প্রসেসড ট্রেসিং ভিউ", use_container_width=True)
 
                 st.markdown("---")
-                smoothness = st.slider("🎛️ লাইন স্মুথনেস", 0.001, 0.010, 0.0025, 0.0005)
+                # স্লাইডারের রেঞ্জ এবং মান আপডেট করা হয়েছে
+                smoothness = st.slider("🎛️ লাইন স্মুথনেস (Curve Fitting)", min_value=0.0005, max_value=0.0100, value=0.0020, step=0.0005, format="%.4f")
                 
                 if st.button("📐 ২. স্মুথ DXF ফাইলে কনভার্ট করুন"):
                     with st.spinner("৩D অ্যাপের উপযোগী স্মুথ DXF তৈরি হচ্ছে..."):
@@ -425,4 +447,4 @@ elif app_mode == "📐 Auto DXF Converter":
                                 st.success(f"🎉 সফলভাবে {valid_lines} টি স্মুথ ভেক্টর কার্ভ তৈরি হয়েছে!")
                                 st.download_button("📥 স্মুথ 3D-রেডি DXF ডাউনলোড করুন", data=file, file_name=output_filename, mime="application/dxf")
                         else:
-                            st.warning("⚠️ কোনো আউটলাইন পাওয়া যায়নি।")
+                            st.warning("⚠️ কোনো আউটলাইন পাওয়া যায়নি।")
