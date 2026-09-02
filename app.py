@@ -149,21 +149,26 @@ def extract_and_draw_lines_live(img_rgb, edge_sensitivity, smoothness, min_line_
     bgr_img = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
     gray = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2GRAY)
 
-    # নয়েজ কমানোর জন্য ব্লার
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    # ১. CLAHE (Contrast Enhancement) - ভেতরের ডিটেইলস (নাক, চোখ) স্পষ্ট করার জন্য
+    clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
+    enhanced_gray = clahe.apply(gray)
+
+    # ২. Bilateral Filter - নয়েজ কমাবে কিন্তু এজ (Edge) নষ্ট করবে না
+    blurred = cv2.bilateralFilter(enhanced_gray, d=9, sigmaColor=75, sigmaSpace=75)
     
-    # Canny Edge Detection (নাক/মুখের লাইন ধরার জন্য বেস্ট)
-    # edge_sensitivity বাড়ালে থ্রেশোল্ড কমবে, ফলে সূক্ষ্ম লাইনও ধরবে
-    lower_thresh = int(max(0, 100 - edge_sensitivity))
-    upper_thresh = int(max(50, 200 - edge_sensitivity))
+    # ৩. Canny Edge Detection (ডাইনামিক থ্রেশোল্ড)
+    # edge_sensitivity বাড়ালে থ্রেশোল্ড কমবে, ফলে ভেতরের দুর্বল লাইনও ধরবে
+    lower_thresh = int(max(10, 150 - (edge_sensitivity * 1.5)))
+    upper_thresh = int(max(50, 250 - (edge_sensitivity * 1.5)))
     
     edges = cv2.Canny(blurred, lower_thresh, upper_thresh)
 
-    # ছোট লাইন জোড়া লাগানোর জন্য সামান্য Dilate
+    # ছোট লাইন জোড়া লাগানোর জন্য সামান্য Dilate
     kernel = np.ones((2, 2), np.uint8)
     edges_dilated = cv2.dilate(edges, kernel, iterations=1)
 
-    cnts = cv2.findContours(edges_dilated, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    # RETR_TREE ব্যবহার করা হলো যাতে ভেতরের সব অবজেক্ট ধরা পড়ে
+    cnts = cv2.findContours(edges_dilated, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     contours = cnts[0] if len(cnts) == 2 else cnts[1]
 
     highlight_img = img_rgb.copy()
@@ -174,11 +179,11 @@ def extract_and_draw_lines_live(img_rgb, edge_sensitivity, smoothness, min_line_
         if arc_len > min_line_length:
             # লাইভ স্মুথনেস অ্যাপ্লাই করা হচ্ছে প্রিভিউ এর জন্য
             epsilon = smoothness * arc_len
-            approx_cnt = cv2.approxPolyDP(cnt, epsilon, False) # Open curves allow better facial lines
+            approx_cnt = cv2.approxPolyDP(cnt, epsilon, False) 
             processed_contours.append(approx_cnt)
             
-            # প্রিভিউতে সবুজ রঙের লাইন ড্র করা
-            cv2.drawContours(highlight_img, [approx_cnt], -1, (0, 255, 0), 2)
+            # প্রিভিউতে সবুজ রঙের লাইন ড্র করা (একটু চিকন করা হলো যাতে ভেতরের ডিটেইলস বোঝা যায়)
+            cv2.drawContours(highlight_img, [approx_cnt], -1, (0, 255, 0), 1)
             
     return highlight_img, processed_contours
 
@@ -392,7 +397,7 @@ elif app_mode == "📐 Auto DXF Converter":
             if cam_file: uploaded_file = cam_file
 
         if uploaded_file is not None:
-            # File ID চেক করে নতুন ছবি এলে স্টোর ক্লিয়ার করা
+            # File ID চেক করে নতুন ছবি এলে স্টোর ক্লিয়ার করা
             file_id = getattr(uploaded_file, 'name', 'camera') + str(getattr(uploaded_file, 'size', 0))
             if st.session_state.get("current_file_id") != file_id:
                 st.session_state["current_file_id"] = file_id
@@ -410,7 +415,7 @@ elif app_mode == "📐 Auto DXF Converter":
             # প্রথম ধাপ: শুধু ব্যাকগ্রাউন্ড রিমুভ (একবার হবে, কারণ এটা ভারী কাজ)
             if st.session_state.get("clean_rgb") is None:
                 if st.button("✨ ১. ব্যাকগ্রাউন্ড রিমুভ ও ক্লিন করুন", type="primary"):
-                    with st.spinner("অ্যাডভান্সড প্রসেসিং চলছে... (একটু সময় লাগতে পারে)"):
+                    with st.spinner("অ্যাডভান্সড প্রসেসিং চলছে... (একটু সময় লাগতে পারে)"):
                         clean_rgb, status = process_base_image(input_image)
                         if clean_rgb is not None:
                             st.session_state["clean_rgb"] = clean_rgb
@@ -418,17 +423,17 @@ elif app_mode == "📐 Auto DXF Converter":
                         else:
                             st.error(f"❌ প্রসেসিং ক্র্যাশ করেছে! কারণ: {status}")
             else:
-                st.success("✅ ছবি প্রসেস হয়ে গেছে! এবার নিচের স্লাইডার দিয়ে লাইন ঠিক করুন।")
+                st.success("✅ ছবি প্রসেস হয়ে গেছে! এবার নিচের স্লাইডার দিয়ে লাইন ঠিক করুন।")
                 
                 st.markdown("### 🎛️ লাইভ লাইন কন্ট্রোলার (সাথ সাথে প্রিভিউ দেখুন)")
                 
-                # স্লাইডারগুলো (এগুলো নাড়ালেই ছবি লাইভ আপডেট হবে)
+                # স্লাইডারগুলো (এগুলো নাড়ালেই ছবি লাইভ আপডেট হবে)
                 col_slider1, col_slider2 = st.columns(2)
                 with col_slider1:
-                    edge_sens = st.slider("🔍 ফেস ডিটেইলস (Sensitivity)", min_value=0, max_value=100, value=60, step=5, help="বাড়ালে নাক, চোখ, মুখের ভেতরের লাইন বেশি ধরবে।")
-                    min_len = st.slider("✂️ ছোট দাগ মুছুন (Noise Remove)", min_value=5, max_value=100, value=20, step=5, help="বাড়ালে মুখের হিজিবিজি ছোট দাগগুলো মুছে যাবে।")
+                    edge_sens = st.slider("🔍 ফেস ডিটেইলস (Sensitivity)", min_value=0, max_value=100, value=60, step=5, help="বাড়ালে নাক, চোখ, মুখের ভেতরের লাইন বেশি ধরবে।")
+                    min_len = st.slider("✂️ ছোট দাগ মুছুন (Noise Remove)", min_value=5, max_value=100, value=20, step=5, help="বাড়ালে মুখের হিজিবিজি ছোট দাগগুলো মুছে যাবে।")
                 with col_slider2:
-                    smooth_val = st.slider("〰️ লাইন স্মুথনেস (Curve Fitting)", min_value=0.0005, max_value=0.0200, value=0.0020, step=0.0010, format="%.4f", help="বাড়ালে লাইন ভেঙে সোজা হয়ে যাবে, কমালে অরিজিনাল কার্ভ থাকবে।")
+                    smooth_val = st.slider("〰️ লাইন স্মুথনেস (Curve Fitting)", min_value=0.0005, max_value=0.0200, value=0.0020, step=0.0010, format="%.4f", help="বাড়ালে লাইন ভেঙে সোজা হয়ে যাবে, কমালে অরিজিনাল কার্ভ থাকবে।")
 
                 # লাইভ প্রসেসিং
                 preview_img, final_contours = extract_and_draw_lines_live(
@@ -454,4 +459,4 @@ elif app_mode == "📐 Auto DXF Converter":
                                 st.success(f"🎉 সফলভাবে {valid_lines} টি স্মুথ ভেক্টর কার্ভ তৈরি হয়েছে!")
                                 st.download_button("📥 স্মুথ 3D-রেডি DXF ডাউনলোড করুন", data=file, file_name=output_filename, mime="application/dxf")
                         else:
-                            st.warning("⚠️ কোনো আউটলাইন পাওয়া যায়নি। স্লাইডারের ডিটেইলস বাড়িয়ে আবার চেষ্টা করুন।")
+                            st.warning("⚠️ কোনো আউটলাইন পাওয়া যায়নি। স্লাইডারের ডিটেইলস বাড়িয়ে আবার চেষ্টা করুন।")
