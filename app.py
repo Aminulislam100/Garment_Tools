@@ -48,7 +48,7 @@ st.markdown("""
         font-weight: 800 !important;
         font-size: 22px !important;
         margin: 0;
-        text-shadow: 2px 2px 4px rgba(255, 255, 255, 0.8); /* 3D Text Effect */
+        text-shadow: 2px 2px 4px rgba(255, 255, 255, 0.8);
     }
     
     /* Active State for 3D Navbar */
@@ -60,7 +60,7 @@ st.markdown("""
     
     div[data-testid="stRadio"] > div[role="radiogroup"] label[data-checked="true"] p {
         color: #ffffff !important;
-        text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.5); /* Deep 3D Shadow for Active Text */
+        text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.5);
     }
 
     /* Fixing Black on Black Container Issue */
@@ -68,10 +68,10 @@ st.markdown("""
         border-radius: 0 0 16px 16px !important; 
         padding: 24px !important; 
         background-color: #ffffff !important; 
-        color: #0f172a !important; /* Explicitly dark text */
+        color: #0f172a !important; 
         margin-bottom: 30px !important; 
     }
-    /* Applying specific borders for Fabric Mod containers */
+    
     .fabric-box-1 { border: 6px solid #c2410c !important; border-top: none !important; box-shadow: 0 15px 35px rgba(194, 65, 12, 0.22) !important; }
     .fabric-box-2 { border: 6px solid #047857 !important; border-top: none !important; box-shadow: 0 15px 35px rgba(4, 120, 87, 0.22) !important; }
 </style>
@@ -154,7 +154,6 @@ def load_cached_benchmarks(file_list, bench_dir):
             lab_hist, embedding, lap_var, edge_density = extract_hybrid_features(img, vector_model)
             data.append((b_file, b_path, lab_hist, embedding, lap_var, edge_density))
     return data
-
 
 # ==========================================
 # ৪. মেইন নেভিগেশন (Top Menu)
@@ -324,33 +323,46 @@ if app_mode == "🧵 Fabric Vision AI":
                     d_color, d_pattern, d_texture = 0.0, 0.0, 0.0
                     
                     for name, b_path, b_hist, b_embed, b_lap, b_edge in benchmark_data:
+                        # 1. Color/Shading Match (Bhattacharyya Distance)
                         b_distance = cv2.compareHist(b_hist, cam_hist, cv2.HISTCMP_BHATTACHARYYA)
                         color_pct = max(0.0, (1.0 - (b_distance * 1.5)) * 100.0)
                         
+                        # 2. Design/Pattern Match (Cosine Similarity - Strict Thresholding)
                         cosine_sim = np.dot(b_embed, cam_embed)
-                        if cosine_sim < 0.75:
+                        strict_pattern_threshold = 0.85 
+                        if cosine_sim < strict_pattern_threshold:
                             pattern_pct = 0.0
                         else:
-                            pattern_pct = ((cosine_sim - 0.75) / (1.0 - 0.75)) * 100.0
+                            pattern_pct = ((cosine_sim - strict_pattern_threshold) / (1.0 - strict_pattern_threshold)) * 100.0
                         
+                        # 3. Texture Difference (Laplacian Variance)
                         lap_diff = abs(b_lap - cam_lap)
-                        texture_pct = max(0.0, 100.0 - (lap_diff / (max(b_lap, 1e-5)) * 150.0))
+                        texture_pct = max(0.0, 100.0 - (lap_diff / (max(b_lap, 1e-5)) * 80.0))
                         
+                        # 4. Edge Density Match
+                        edge_diff = abs(b_edge - cam_edge)
+                        edge_pct = max(0.0, 100.0 - (edge_diff / (max(b_edge, 1e-5)) * 100.0))
+                        
+                        # Combined Texture Score (Weighted Average)
+                        final_texture_pct = (texture_pct * 0.6) + (edge_pct * 0.4)
+                        
+                        # Calculation based on Inspection Mode
                         if "শুধুমাত্র কালার/শেডিং" in inspection_mode:
                             final_score = color_pct
                         elif "শুধুমাত্র ডিজাইন/প্রিনট" in inspection_mode:
                             final_score = pattern_pct
                         elif "সুতার ঘনত্ব / টেক্সচার" in inspection_mode:
-                            final_score = texture_pct
+                            final_score = final_texture_pct
                         elif "কালার + ডিজাইন" in inspection_mode:
                             final_score = (color_pct * 0.50) + (pattern_pct * 0.50)
                         else:  
-                            final_score = (color_pct * 0.40) + (pattern_pct * 0.40) + (texture_pct * 0.20)
+                            # All-in-One Hybrid Mode
+                            final_score = (color_pct * 0.40) + (pattern_pct * 0.40) + (final_texture_pct * 0.20)
                         
                         if final_score > best_match_score:
                             best_match_score = final_score
                             best_match_path, best_match_name = b_path, name
-                            d_color, d_pattern, d_texture = color_pct, pattern_pct, texture_pct
+                            d_color, d_pattern, d_texture = color_pct, pattern_pct, final_texture_pct
                     
                     st.write(f"**চেকিং মোড:** `{inspection_mode}`")
                     st.markdown(f"### **ফাইনাল একুরেসি:** `{best_match_score:.2f}%`")
@@ -374,9 +386,8 @@ if app_mode == "🧵 Fabric Vision AI":
                             st.image(cv2.cvtColor(cv2.imread(best_match_path), cv2.COLOR_BGR2RGB), caption=f"ম্যাচিং মাস্টার: {best_match_name}", use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-
 # ==========================================
-# APP 2: AUTO DXF CONVERTER (Crashing Safety Fixed)
+# APP 2: AUTO DXF CONVERTER
 # ==========================================
 elif app_mode == "📐 Auto DXF Converter":
     
@@ -402,7 +413,7 @@ elif app_mode == "📐 Auto DXF Converter":
 
         if uploaded_file is not None:
             try:
-                uploaded_file.seek(0) # বাফার রিসেট
+                uploaded_file.seek(0)
                 file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
                 img = cv2.imdecode(file_bytes, cv2.IMREAD_GRAYSCALE)
 
