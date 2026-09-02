@@ -3,7 +3,7 @@ import time
 import cv2
 import numpy as np
 import streamlit as st
-from PIL import Image
+from PIL import Image, ImageEnhance
 import torch
 import torchvision.models as models
 import torchvision.transforms as transforms
@@ -103,7 +103,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# ৩. ডিপ লার্নিং ও গ্লোবাল ফাংশনস (Fabric AI)
+# ৩. ডিপ লার্নিং ও গ্লোবাল ফাংশনস (Fabric AI & Image Optimizers)
 # ==========================================
 BENCHMARK_DIR = "benchmark"
 os.makedirs(BENCHMARK_DIR, exist_ok=True)
@@ -181,6 +181,92 @@ def load_cached_benchmarks(file_list, bench_dir):
     return data
 
 # ==========================================
+# 8. প্রফেশনাল ইমেজ ও ভেক্টর স্মুথিং ইঞ্জিন (For CAD/3D Pattern)
+# ==========================================
+def deep_enhance_and_highlight(pil_img):
+    """
+    ছবি অপ্টিমাইজেশন, ব্যাকগ্রাউন্ড রিমুভ, শার্পেনিং ও হাইলাইটেড ট্রেসিং ভিউ
+    """
+    # ১. OOM ফিক্স: নিরাপদ সাইজে রিসাইজ
+    pil_img.thumbnail((1280, 1280), Image.Resampling.LANCZOS)
+    
+    # ২. কালার ভাইব্রেন্স ও কন্ট্রাস্ট এনহ্যান্সমেন্ট
+    enhancer_col = ImageEnhance.Color(pil_img)
+    pil_img = enhancer_col.enhance(1.25)
+    enhancer_con = ImageEnhance.Contrast(pil_img)
+    pil_img = enhancer_con.enhance(1.35)
+    
+    # ৩. ব্যাকগ্রাউন্ড রিমুভ (rembg)
+    img_no_bg = remove(pil_img)
+    img_array = np.array(img_no_bg)
+    
+    # ৪. RGBA থেকে ক্লিয়ার RGB কনভার্সন
+    if img_array.ndim == 3 and img_array.shape[2] == 4:
+        alpha = img_array[:, :, 3]
+        rgb = img_array[:, :, :3]
+        white_bg = np.ones_like(rgb, dtype=np.uint8) * 255
+        alpha_f = alpha[:, :, np.newaxis] / 255.0
+        img_rgb = (rgb * alpha_f + white_bg * (1 - alpha_f)).astype(np.uint8)
+    else:
+        img_rgb = cv2.cvtColor(img_array, cv2.COLOR_BGR2RGB) if img_array.ndim == 3 else cv2.cvtColor(img_array, cv2.COLOR_GRAY2RGB)
+
+    # ৫. বিল্যাটেরাল ফিল্টার (নয়েজ দূর করবে কিন্তু এজ/লাইন শার্প রাখবে)
+    bgr_img = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
+    filtered = cv2.bilateralFilter(bgr_img, d=9, sigmaColor=75, sigmaSpace=75)
+    gray = cv2.cvtColor(filtered, cv2.COLOR_BGR2GRAY)
+
+    # ৬. CLAHE অটোকন্ট্রাস্ট ও এডাপ্টিভ থ্রেশহোল্ডিং
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+    enhanced_gray = clahe.apply(gray)
+    
+    # ৭. মরফোলজিকাল ক্লোজিং (ভাঙ্গা লাইন জোড়া লাগাবে)
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    closed_gray = cv2.morphologyEx(enhanced_gray, cv2.MORPH_CLOSE, kernel, iterations=1)
+    
+    # ৮. এডাপ্টিভ বাইনারি থ্রেশহোল্ড
+    thresh = cv2.adaptiveThreshold(
+        closed_gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+        cv2.THRESH_BINARY_INV, 15, 4
+    )
+    thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=1)
+
+    # ৯. কনটুর/আউটলাইন ডিটেকশন
+    contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
+
+    # ১০. হাইলাইটেড ট্রেসিং ওভারলে তৈরি (Electric Green Highlights)
+    highlight_img = img_rgb.copy()
+    cv2.drawContours(highlight_img, contours, -1, (0, 255, 128), 2)
+    
+    return img_rgb, highlight_img, contours
+
+def export_smooth_dxf(contours, output_filename, smoothness_factor=0.002, min_area=30):
+    """
+    CAD এবং 3D Pattern Apps এর জন্য স্মুথ ও নিরবচ্ছিন্ন DXF লাইন জেনারেটর
+    """
+    doc = ezdxf.new(dxfversion='R2010')
+    msp = doc.modelspace()
+    valid_count = 0
+
+    for cnt in contours:
+        # ১. ছোট নয়েজ বা ভাঙ্গা ডট বাদ দেওয়া
+        area = cv2.contourArea(cnt)
+        arc_len = cv2.arcLength(cnt, True)
+        
+        if area > min_area and arc_len > 15:
+            # ২. Douglas-Peucker Smoothing (পিক্সেল ভাঙ্গা লাইন সোজা ও স্মুথ করবে)
+            epsilon = smoothness_factor * arc_len
+            approx_cnt = cv2.approxPolyDP(cnt, epsilon, True)
+            
+            if len(approx_cnt) >= 2:
+                points = [(float(pt[0][0]), float(pt[0][1])) for pt in approx_cnt]
+                # DXF এ স্মুথ পলিলাইন যোগ
+                msp.add_lwpolyline(points, close=True)
+                valid_count += 1
+
+    doc.saveas(output_filename)
+    return valid_count
+
+# ==========================================
 # ৪. মেইন নেভিগেশন (Top Menu)
 # ==========================================
 app_mode = st.radio("Navigation", ["🧵 QC Checker", "📐 Auto DXF Converter"], horizontal=True, label_visibility="collapsed")
@@ -220,7 +306,6 @@ if app_mode == "🧵 QC Checker":
         )
     )
     
-    # 🎛️ Threshold Customization
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 🎛️ থ্রেশহোল্ড কাস্টমাইজেশন")
     st.sidebar.info("আপনার ফ্যাক্টরির মান অনুযায়ী আলাদা আলাদা পাস মার্ক সেট করুন।")
@@ -229,7 +314,6 @@ if app_mode == "🧵 QC Checker":
     pattern_threshold = st.sidebar.slider("✨ প্রিন্ট/প্যাটার্ন পাস মার্ক (%)", 50.0, 99.0, 80.0, 1.0)
     texture_threshold = st.sidebar.slider("🧶 টেক্সচার/ঘনত্ব পাস মার্ক (%)", 50.0, 99.0, 70.0, 1.0)
 
-    # Master Sample Setup - With Native Streamlit Container Border
     with st.container(border=True):
         st.markdown('<div class="step-header-1">🏆 ধাপ ১: বেঞ্চমার্ক ইনপুট (Master Sample Setup)</div>', unsafe_allow_html=True)
         
@@ -310,8 +394,7 @@ if app_mode == "🧵 QC Checker":
                 for f in os.listdir(BENCHMARK_DIR): os.remove(os.path.join(BENCHMARK_DIR, f))
                 st.rerun()
 
-    # Scanner Setup - With Native Streamlit Container Border
-    st.write("") # Spacer
+    st.write("") 
     with st.container(border=True):
         st.markdown('<div class="step-header-2">🔬 ধাপ ২: টেস্টিং স্ক্যানার (Production Check)</div>', unsafe_allow_html=True)
         final_benchmark_files = [f for f in os.listdir(BENCHMARK_DIR) if f.endswith(('.png', '.jpg', '.jpeg'))]
@@ -344,11 +427,9 @@ if app_mode == "🧵 QC Checker":
                     d_color, d_pattern, d_texture = 0.0, 0.0, 0.0
                     
                     for name, b_path, b_hist, b_embed, b_lap, b_edge in benchmark_data:
-                        # 1. Color/Shading Match
                         b_distance = cv2.compareHist(b_hist, cam_hist, cv2.HISTCMP_BHATTACHARYYA)
                         color_pct = max(0.0, (1.0 - (b_distance * 1.5)) * 100.0)
                         
-                        # 2. Design/Pattern Match
                         cosine_sim = np.dot(b_embed, cam_embed)
                         strict_pattern_threshold = 0.85 
                         if cosine_sim < strict_pattern_threshold:
@@ -356,17 +437,14 @@ if app_mode == "🧵 QC Checker":
                         else:
                             pattern_pct = ((cosine_sim - strict_pattern_threshold) / (1.0 - strict_pattern_threshold)) * 100.0
                         
-                        # 3. Texture Difference
                         lap_diff = abs(b_lap - cam_lap)
                         texture_pct = max(0.0, 100.0 - (lap_diff / (max(b_lap, 1e-5)) * 80.0))
                         
-                        # 4. Edge Density Match
                         edge_diff = abs(b_edge - cam_edge)
                         edge_pct = max(0.0, 100.0 - (edge_diff / (max(b_edge, 1e-5)) * 100.0))
                         
                         final_texture_pct = (texture_pct * 0.6) + (edge_pct * 0.4)
                         
-                        # Calculate Overall Score
                         if "শুধুমাত্র কালার/শেডিং" in inspection_mode:
                             final_score = color_pct
                         elif "শুধুমাত্র ডিজাইন/প্রিনট" in inspection_mode:
@@ -391,7 +469,6 @@ if app_mode == "🧵 QC Checker":
                     col_m2.metric("✨ Pattern Score", f"{d_pattern:.1f}%", f"Target: {pattern_threshold}%")
                     col_m3.metric("🧶 Texture Score", f"{d_texture:.1f}%", f"Target: {texture_threshold}%")
                     
-                    # 🎛️ Customized Passing Logic
                     is_pass = False
                     fail_reasons = []
 
@@ -409,7 +486,6 @@ if app_mode == "🧵 QC Checker":
                         if d_color < color_threshold: fail_reasons.append("কালার")
                         if d_pattern < pattern_threshold: fail_reasons.append("ডিজাইন")
                     else:  
-                        # All-in-One Mode requires ALL active thresholds to pass
                         is_pass = (d_color >= color_threshold) and (d_pattern >= pattern_threshold) and (d_texture >= texture_threshold)
                         if d_color < color_threshold: fail_reasons.append("কালার")
                         if d_pattern < pattern_threshold: fail_reasons.append("ডিজাইন")
@@ -437,7 +513,7 @@ elif app_mode == "📐 Auto DXF Converter":
     page = st.sidebar.radio("আপনার প্রয়োজনীয় টুলটি বেছে নিন:", ["Convert Clear Photo", "Process Photo and Convert"])
 
     st.sidebar.markdown("---")
-    st.sidebar.info("১. **Convert Clear Photo:** শুধু পরিষ্কার ছবির জন্য দ্রুত কনভার্টার।\n২. **Process Photo:** অস্পষ্ট ছবির ব্যাকগ্রাউন্ড রিমুভ ও লাইন শার্প করার অ্যাডভান্সড টুল।")
+    st.sidebar.info("১. **Convert Clear Photo:** শুধু পরিষ্কার ছবির জন্য দ্রুত কনভার্টার।\n২. **Process Photo:** অস্পষ্ট ছবির ব্যাকগ্রাউন্ড রিমুভ, লাইন শার্পেনিং ও ৩D অ্যাপ অপ্টিমাইজড কনভার্টার।")
 
     if page == "Convert Clear Photo":
         st.title("📐 Convert Clear Photo")
@@ -462,7 +538,7 @@ elif app_mode == "📐 Auto DXF Converter":
                 if img is None:
                     st.error("⚠️ ছবি সঠিকভাবে লোড করা সম্ভব হয়নি! আবার চেষ্টা করুন।")
                 else:
-                    st.image(img, caption="আপনার ইনপুট ছবি", width=300)
+                    st.image(img, caption="আপনার ইনপুট ছবি", width=350)
 
                     if st.button("⚡ DXF ফাইলে কনভার্ট করুন", key="btn1"):
                         with st.spinner("প্রসেসিং হচ্ছে, অনুগ্রহ করে অপেক্ষা করুন..."):
@@ -474,8 +550,11 @@ elif app_mode == "📐 Auto DXF Converter":
 
                             count = 0
                             for cnt in contours:
-                                if len(cnt) > 2:
-                                    points = [(float(pt[0][0]), float(pt[0][1])) for pt in cnt]
+                                arc_len = cv2.arcLength(cnt, True)
+                                if arc_len > 15:
+                                    # Smoothing to prevent broken vector lines
+                                    approx = cv2.approxPolyDP(cnt, 0.002 * arc_len, True)
+                                    points = [(float(pt[0][0]), float(pt[0][1])) for pt in approx]
                                     msp.add_lwpolyline(points, close=True)
                                     count += 1
 
@@ -499,8 +578,8 @@ elif app_mode == "📐 Auto DXF Converter":
                 st.error(f"❌ একটি টেকনিক্যাল সমস্যা হয়েছে: {e}")
 
     elif page == "Process Photo and Convert":
-        st.title("⚙️ Process Photo and Convert")
-        st.write("এই টুলটি স্বয়ংক্রিয়ভাবে ব্যাকগ্রাউন্ড রিমুভ, অটো কন্ট্রাস্ট এবং শার্প করে নিখুঁত DXF তৈরি করবে।")
+        st.title("⚙️ Process Photo and Convert (3D Pattern Optimized)")
+        st.write("এই টুলটি স্বয়ংক্রিয়ভাবে ব্যাকগ্রাউন্ড রিমুভ, কালার ও অটো-কন্ট্রাস্ট ফিক্স, লাইন হাইলাইট এবং ৩D অ্যাপসের উপযোগী মসৃণ (Smooth) DXF তৈরি করে।")
 
         tab1, tab2 = st.tabs(["📁 ফাইল আপলোড", "📸 লাইভ ক্যামেরা"])
         uploaded_file = None
@@ -513,62 +592,71 @@ elif app_mode == "📐 Auto DXF Converter":
             if cam_file: uploaded_file = cam_file
 
         if uploaded_file is not None:
+            # Session state reset if a new file is uploaded
+            file_id = getattr(uploaded_file, 'name', 'camera') + str(getattr(uploaded_file, 'size', 0))
+            if st.session_state.get("current_file_id") != file_id:
+                st.session_state["current_file_id"] = file_id
+                st.session_state["processed"] = False
+                st.session_state["highlight_img"] = None
+                st.session_state["contours"] = None
+
             try:
                 uploaded_file.seek(0)
                 input_image = Image.open(uploaded_file)
-                st.image(input_image, caption="অরিজিনাল ছবি", width=300)
+                
+                col_p1, col_p2 = st.columns(2)
+                with col_p1:
+                    st.image(input_image, caption="অরিজিনাল ইনপুট ছবি", use_container_width=True)
 
-                if st.button("⚡ প্রসেস ও DXF ফাইলে কনভার্ট করুন", key="btn2"):
-                    with st.spinner("অ্যাডভান্সড প্রসেসিং হচ্ছে (ব্যাকগ্রাউন্ড রিমুভ ও শার্পেন)..."):
-                        img_no_bg = remove(input_image)
-                        img_array = np.array(img_no_bg)
-                        
-                        if img_array.ndim == 3 and img_array.shape[2] == 4:
-                            alpha_channel = img_array[:, :, 3]
-                            rgb_channels = img_array[:, :, :3]
-                            white_background = np.ones_like(rgb_channels, dtype=np.uint8) * 255
-                            alpha_factor = alpha_channel[:, :, np.newaxis] / 255.0
-                            img_rgb = rgb_channels * alpha_factor + white_background * (1 - alpha_factor)
-                            img_rgb = img_rgb.astype(np.uint8)
-                        else:
-                            img_rgb = img_array
+                st.markdown("---")
+                
+                # Step 1 Button: Process & Highlight Lines
+                if st.button("✨ ১. ছবি প্রসেস ও লাইন হাইলাইট করুন", key="btn_process", type="primary"):
+                    with st.spinner("অ্যাডভান্সড প্রসেসিং চলছে (ব্যাকগ্রাউন্ড রিমুভ, শার্পেন ও লাইন ট্রেসিং)..."):
+                        clean_rgb, highlight_img, contours = deep_enhance_and_highlight(input_image)
+                        st.session_state["highlight_img"] = highlight_img
+                        st.session_state["contours"] = contours
+                        st.session_state["processed"] = True
 
-                        gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
-                        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-                        enhanced_gray = clahe.apply(gray)
+                # Step 2 View & DXF Generation
+                if st.session_state.get("processed", False) and st.session_state["highlight_img"] is not None:
+                    with col_p2:
+                        st.image(
+                            st.session_state["highlight_img"], 
+                            caption="প্রসেসড ট্রেসিং ভিউ (হাইলাইটেড গ্রিন লাইন)", 
+                            use_container_width=True
+                        )
 
-                        kernel = np.array([[-1, -1, -1],
-                                           [-1,  9, -1],
-                                           [-1, -1, -1]])
-                        sharpened = cv2.filter2D(enhanced_gray, -1, kernel)
-                        
-                        st.image(sharpened, caption="ক্লিন ও শার্প করা ছবি (ট্রেসিংয়ের জন্য প্রস্তুত)", width=300)
-
-                        _, thresh = cv2.threshold(sharpened, 127, 255, cv2.THRESH_BINARY_INV)
-                        contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-
-                        doc = ezdxf.new(dxfversion='R2010')
-                        msp = doc.modelspace()
-
-                        count = 0
-                        for cnt in contours:
-                            if cv2.contourArea(cnt) > 10: 
-                                points = [(float(pt[0][0]), float(pt[0][1])) for pt in cnt]
-                                msp.add_lwpolyline(points, close=True)
-                                count += 1
-
-                        file_base_name = getattr(uploaded_file, 'name', 'Camera_Snapshot.jpg')
-                        output_filename = f"{os.path.splitext(file_base_name)[0]}_Processed.dxf"
-                        doc.saveas(output_filename)
-
-                        with open(output_filename, "rb") as file:
-                            st.success("সফলভাবে নিখুঁত DXF তৈরি হয়েছে!")
-                            st.download_button(
-                                label="📥 ফ্রেশ DXF ফাইল ডাউনলোড করুন",
-                                data=file,
-                                file_name=output_filename,
-                                mime="application/dxf",
-                                key="dl_btn2"
+                    st.markdown("---")
+                    st.success("✅ ছবি প্রসেসিং সম্পন্ন হয়েছে! নিচের বাটনে ক্লিক করে স্মুথ DXF ডাউনলোড করুন।")
+                    
+                    # Fine Tuning Slider for 3D Pattern Smoothness
+                    smoothness = st.slider("🎛️ লাইন স্মুথনেস (Smoothness Level)", 0.001, 0.010, 0.0025, 0.0005, help="মান বাড়ালে ভাঙ্গা ভাঙ্গা বা করাত-দাঁতি লাইন সোজা ও স্মুথ হবে।")
+                    
+                    if st.button("📐 ২. স্মুথ DXF ফাইলে কনভার্ট করুন", key="btn_convert"):
+                        with st.spinner("৩D অ্যাপের উপযোগী স্মুথ DXF তৈরি হচ্ছে..."):
+                            file_base_name = getattr(uploaded_file, 'name', 'Camera_Snapshot.jpg')
+                            output_filename = f"{os.path.splitext(file_base_name)[0]}_Smooth_3D.dxf"
+                            
+                            valid_lines = export_smooth_dxf(
+                                st.session_state["contours"], 
+                                output_filename, 
+                                smoothness_factor=smoothness
                             )
+
+                            if valid_lines == 0:
+                                st.warning("⚠️ কোনো আউটলাইন পাওয়া যায়নি। ছবি পরিবর্তন করে আবার চেষ্টা করুন।")
+                            else:
+                                with open(output_filename, "rb") as file:
+                                    st.balloons()
+                                    st.success(f"🎉 সফলভাবে {valid_lines} টি স্মুথ ভেক্টর কার্ভের নিখুঁত DXF তৈরি হয়েছে!")
+                                    st.download_button(
+                                        label="📥 স্মুথ 3D-রেডি DXF ডাউনলোড করুন",
+                                        data=file,
+                                        file_name=output_filename,
+                                        mime="application/dxf",
+                                        key="dl_btn2"
+                                    )
+
             except Exception as e:
-                st.error(f"❌ প্রসেস করার সময় সমস্যা হয়েছে: {e}")
+                st.error(f"❌ প্রসেস করার সময় একটি সমস্যা হয়েছে: {e}")
