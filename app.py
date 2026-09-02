@@ -40,7 +40,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# ২. ডিপ লার্নিং ও গ্লোবাল ফাংশনস
+# ২. ডিপ লার্নিং ও গ্লোবাল ফাংশনস (QC Checker)
 # ==========================================
 BENCHMARK_DIR = "benchmark"
 os.makedirs(BENCHMARK_DIR, exist_ok=True)
@@ -110,37 +110,28 @@ def load_cached_benchmarks(file_list, bench_dir):
     return data
 
 # ==========================================
-# ৩. Crash-Proof ইমেজ ও ভেক্টর স্মুথিং ইঞ্জিন
+# ৩. Crash-Proof ইমেজ রিমুভ ও লাইভ এজ ডিটেকশন
 # ==========================================
-def deep_enhance_and_highlight(pil_img):
+def process_base_image(pil_img):
+    """শুধুমাত্র ব্যাকগ্রাউন্ড রিমুভ এবং কালার কারেকশন করবে (একবার রান হবে)"""
     try:
-        # ১. RAM সেভ করতে সেফ সাইজ (1024px) এবং PIL version compatibility
         resample_filter = getattr(Image, 'Resampling', Image).LANCZOS if hasattr(Image, 'Resampling') else Image.ANTIALIAS
         pil_img.thumbnail((1024, 1024), resample_filter)
+        if pil_img.mode != 'RGB': pil_img = pil_img.convert('RGB')
         
-        # কালার মোড ঠিক করা
-        if pil_img.mode != 'RGB':
-            pil_img = pil_img.convert('RGB')
-        
-        # ২. এনহ্যান্সমেন্ট
         enhancer_col = ImageEnhance.Color(pil_img)
-        pil_img = enhancer_col.enhance(1.25)
-        enhancer_con = ImageEnhance.Contrast(pil_img)
-        pil_img = enhancer_con.enhance(1.35)
+        pil_img = enhancer_col.enhance(1.1)
         
-        # ৩. ব্যাকগ্রাউন্ড রিমুভ (সেফ মোড)
         img_array = None
         if REMBG_AVAILABLE:
             try:
                 img_no_bg = remove(pil_img)
                 img_array = np.array(img_no_bg)
             except Exception as e:
-                print(f"Rembg Memory Error: {e}")
                 img_array = np.array(pil_img)
         else:
             img_array = np.array(pil_img)
         
-        # ৪. RGBA থেকে ক্লিয়ার RGB (Broadcasting Error fix)
         if img_array.ndim == 3 and img_array.shape[2] == 4:
             alpha = img_array[:, :, 3] / 255.0
             rgb = img_array[:, :, :3]
@@ -149,64 +140,65 @@ def deep_enhance_and_highlight(pil_img):
         else:
             img_rgb = img_array
 
-        # ৫. স্মুথিং ও ফিল্টারিং
-        bgr_img = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
-        filtered = cv2.bilateralFilter(bgr_img, d=9, sigmaColor=75, sigmaSpace=75)
-        gray = cv2.cvtColor(filtered, cv2.COLOR_BGR2GRAY)
-
-        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-        enhanced_gray = clahe.apply(gray)
-        
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-        closed_gray = cv2.morphologyEx(enhanced_gray, cv2.MORPH_CLOSE, kernel, iterations=1)
-        
-        thresh = cv2.adaptiveThreshold(
-            closed_gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-            cv2.THRESH_BINARY_INV, 15, 4
-        )
-        thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=1)
-
-        # ৬. OpenCV ভার্সন কম্প্যাটিবিলিটি (Version 3 vs 4 Fix)
-        cnts = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
-        contours = cnts[0] if len(cnts) == 2 else cnts[1]
-
-        # ৭. ওভারলে তৈরি
-        highlight_img = img_rgb.copy()
-        cv2.drawContours(highlight_img, contours, -1, (0, 255, 128), 2)
-        
-        return img_rgb, highlight_img, contours, "Success"
-        
+        return img_rgb, "Success"
     except Exception as e:
-        return None, None, None, str(e)
+        return None, str(e)
 
-def export_smooth_dxf(contours, output_filename, smoothness_factor=0.002, min_area=30):
+def extract_and_draw_lines_live(img_rgb, edge_sensitivity, smoothness, min_line_length):
+    """স্লাইডার চেঞ্জ করলে এটি লাইভ আপডেট হবে এবং বেটার লাইন ডিটেক্ট করবে"""
+    bgr_img = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
+    gray = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2GRAY)
+
+    # নয়েজ কমানোর জন্য ব্লার
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    
+    # Canny Edge Detection (নাক/মুখের লাইন ধরার জন্য বেস্ট)
+    # edge_sensitivity বাড়ালে থ্রেশোল্ড কমবে, ফলে সূক্ষ্ম লাইনও ধরবে
+    lower_thresh = int(max(0, 100 - edge_sensitivity))
+    upper_thresh = int(max(50, 200 - edge_sensitivity))
+    
+    edges = cv2.Canny(blurred, lower_thresh, upper_thresh)
+
+    # ছোট লাইন জোড়া লাগানোর জন্য সামান্য Dilate
+    kernel = np.ones((2, 2), np.uint8)
+    edges_dilated = cv2.dilate(edges, kernel, iterations=1)
+
+    cnts = cv2.findContours(edges_dilated, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    contours = cnts[0] if len(cnts) == 2 else cnts[1]
+
+    highlight_img = img_rgb.copy()
+    processed_contours = []
+
+    for cnt in contours:
+        arc_len = cv2.arcLength(cnt, True)
+        if arc_len > min_line_length:
+            # লাইভ স্মুথনেস অ্যাপ্লাই করা হচ্ছে প্রিভিউ এর জন্য
+            epsilon = smoothness * arc_len
+            approx_cnt = cv2.approxPolyDP(cnt, epsilon, False) # Open curves allow better facial lines
+            processed_contours.append(approx_cnt)
+            
+            # প্রিভিউতে সবুজ রঙের লাইন ড্র করা
+            cv2.drawContours(highlight_img, [approx_cnt], -1, (0, 255, 0), 2)
+            
+    return highlight_img, processed_contours
+
+def export_smooth_dxf(contours, output_filename):
+    """প্রসেসড কন্টুর গুলোকে DXF এ এক্সপোর্ট করবে"""
     doc = ezdxf.new(dxfversion='R2010')
     msp = doc.modelspace()
     valid_count = 0
 
     for cnt in contours:
-        area = cv2.contourArea(cnt)
-        arc_len = cv2.arcLength(cnt, True)
-        if area > min_area and arc_len > 15:
-            # ১. অতিরিক্ত নয়েজ পয়েন্ট কমানো (অরিজিনাল শেপ অক্ষুণ্ণ রেখে)
-            epsilon = smoothness_factor * arc_len
-            approx_cnt = cv2.approxPolyDP(cnt, epsilon, True)
-            
-            # ২. পয়েন্টগুলোকে DXF স্থানাঙ্কে (Coordinates) রূপান্তর করা
-            # CAD সফটওয়্যারে Y-অক্ষ সাধারণত উল্টো থাকে, তাই -y করা হয়েছে।
-            points = [(float(pt[0][0]), float(-pt[0][1]), 0) for pt in approx_cnt]
-            
-            if len(points) >= 4:
-                # লুপটি বন্ধ করতে প্রথম পয়েন্ট শেষে যুক্ত করা
-                points.append(points[0]) 
-                # ৩. Polyline-এর বদলে SPLINE ব্যবহার - এটি লাইন ভাঙতে দেবে না
-                msp.add_spline(points)
-                valid_count += 1
-            elif len(points) >= 2:
-                # খুব ছোট কোনো শেপ থাকলে সাধারণ পলিলাইন
-                pts_2d = [(p[0], p[1]) for p in points]
-                msp.add_lwpolyline(pts_2d, close=True)
-                valid_count += 1
+        points = [(float(pt[0][0]), float(-pt[0][1]), 0) for pt in cnt]
+        
+        if len(points) >= 4:
+            # Spline ব্যবহার করা হচ্ছে একদম রাউন্ড শেপের জন্য
+            msp.add_spline(points)
+            valid_count += 1
+        elif len(points) >= 2:
+            pts_2d = [(p[0], p[1]) for p in points]
+            msp.add_lwpolyline(pts_2d, close=False)
+            valid_count += 1
                 
     doc.saveas(output_filename)
     return valid_count
@@ -217,7 +209,7 @@ def export_smooth_dxf(contours, output_filename, smoothness_factor=0.002, min_ar
 app_mode = st.radio("Navigation", ["🧵 QC Checker", "📐 Auto DXF Converter"], horizontal=True, label_visibility="collapsed")
 
 # ==========================================
-# APP 1: QC CHECKER (Fabric Vision AI)
+# APP 1: QC CHECKER
 # ==========================================
 if app_mode == "🧵 QC Checker":
     st.markdown("""
@@ -371,7 +363,6 @@ elif app_mode == "📐 Auto DXF Converter":
                         arc_len = cv2.arcLength(cnt, True)
                         if arc_len > 15:
                             approx = cv2.approxPolyDP(cnt, 0.002 * arc_len, True)
-                            # স্প্লাইন কার্ভ অ্যাপ্লাই করা হলো
                             points = [(float(pt[0][0]), float(-pt[0][1]), 0) for pt in approx]
                             
                             if len(points) >= 4:
@@ -389,7 +380,7 @@ elif app_mode == "📐 Auto DXF Converter":
                         st.download_button("📥 DXF ফাইল ডাউনলোড করুন", data=file, file_name=output_filename, mime="application/dxf")
 
     elif page == "Process Photo and Convert":
-        st.title("⚙️ Process Photo and Convert (Crash-Proof)")
+        st.title("⚙️ Process Photo and Convert (Live Edge & Smoothness)")
         tab1, tab2 = st.tabs(["📁 ফাইল আপলোড", "📸 লাইভ ক্যামেরা"])
         uploaded_file = None
         
@@ -401,12 +392,11 @@ elif app_mode == "📐 Auto DXF Converter":
             if cam_file: uploaded_file = cam_file
 
         if uploaded_file is not None:
+            # File ID চেক করে নতুন ছবি এলে স্টোর ক্লিয়ার করা
             file_id = getattr(uploaded_file, 'name', 'camera') + str(getattr(uploaded_file, 'size', 0))
             if st.session_state.get("current_file_id") != file_id:
                 st.session_state["current_file_id"] = file_id
-                st.session_state["processed"] = False
-                st.session_state["highlight_img"] = None
-                st.session_state["contours"] = None
+                st.session_state["clean_rgb"] = None
 
             uploaded_file.seek(0)
             input_image = Image.open(uploaded_file)
@@ -416,35 +406,52 @@ elif app_mode == "📐 Auto DXF Converter":
                 st.image(input_image, caption="অরিজিনাল ইনপুট ছবি", use_container_width=True)
 
             st.markdown("---")
-            if st.button("✨ ১. ছবি প্রসেস ও লাইন হাইলাইট করুন", type="primary"):
-                with st.spinner("অ্যাডভান্সড প্রসেসিং চলছে..."):
-                    clean_rgb, highlight_img, contours, status = deep_enhance_and_highlight(input_image)
-                    
-                    if clean_rgb is None:
-                        st.error(f"❌ প্রসেসিং ক্র্যাশ করেছে! কারণ: {status}")
-                    else:
-                        st.session_state["highlight_img"] = highlight_img
-                        st.session_state["contours"] = contours
-                        st.session_state["processed"] = True
+            
+            # প্রথম ধাপ: শুধু ব্যাকগ্রাউন্ড রিমুভ (একবার হবে, কারণ এটা ভারী কাজ)
+            if st.session_state.get("clean_rgb") is None:
+                if st.button("✨ ১. ব্যাকগ্রাউন্ড রিমুভ ও ক্লিন করুন", type="primary"):
+                    with st.spinner("অ্যাডভান্সড প্রসেসিং চলছে... (একটু সময় লাগতে পারে)"):
+                        clean_rgb, status = process_base_image(input_image)
+                        if clean_rgb is not None:
+                            st.session_state["clean_rgb"] = clean_rgb
+                            st.rerun()
+                        else:
+                            st.error(f"❌ প্রসেসিং ক্র্যাশ করেছে! কারণ: {status}")
+            else:
+                st.success("✅ ছবি প্রসেস হয়ে গেছে! এবার নিচের স্লাইডার দিয়ে লাইন ঠিক করুন।")
+                
+                st.markdown("### 🎛️ লাইভ লাইন কন্ট্রোলার (সাথ সাথে প্রিভিউ দেখুন)")
+                
+                # স্লাইডারগুলো (এগুলো নাড়ালেই ছবি লাইভ আপডেট হবে)
+                col_slider1, col_slider2 = st.columns(2)
+                with col_slider1:
+                    edge_sens = st.slider("🔍 ফেস ডিটেইলস (Sensitivity)", min_value=0, max_value=100, value=60, step=5, help="বাড়ালে নাক, চোখ, মুখের ভেতরের লাইন বেশি ধরবে।")
+                    min_len = st.slider("✂️ ছোট দাগ মুছুন (Noise Remove)", min_value=5, max_value=100, value=20, step=5, help="বাড়ালে মুখের হিজিবিজি ছোট দাগগুলো মুছে যাবে।")
+                with col_slider2:
+                    smooth_val = st.slider("〰️ লাইন স্মুথনেস (Curve Fitting)", min_value=0.0005, max_value=0.0200, value=0.0020, step=0.0010, format="%.4f", help="বাড়ালে লাইন ভেঙে সোজা হয়ে যাবে, কমালে অরিজিনাল কার্ভ থাকবে।")
 
-            if st.session_state.get("processed", False) and st.session_state["highlight_img"] is not None:
+                # লাইভ প্রসেসিং
+                preview_img, final_contours = extract_and_draw_lines_live(
+                    st.session_state["clean_rgb"], 
+                    edge_sensitivity=edge_sens, 
+                    smoothness=smooth_val, 
+                    min_line_length=min_len
+                )
+
                 with col_p2:
-                    st.image(st.session_state["highlight_img"], caption="প্রসেসড ট্রেসিং ভিউ", use_container_width=True)
+                    st.image(preview_img, caption="লাইভ ট্রেসিং ভিউ (সবুজ লাইনগুলো DXF এ যাবে)", use_container_width=True)
 
                 st.markdown("---")
-                # স্লাইডারের রেঞ্জ এবং মান আপডেট করা হয়েছে
-                smoothness = st.slider("🎛️ লাইন স্মুথনেস (Curve Fitting)", min_value=0.0005, max_value=0.0100, value=0.0020, step=0.0005, format="%.4f")
-                
-                if st.button("📐 ২. স্মুথ DXF ফাইলে কনভার্ট করুন"):
+                if st.button("📐 ২. স্মুথ DXF ফাইলে কনভার্ট করুন", type="primary"):
                     with st.spinner("৩D অ্যাপের উপযোগী স্মুথ DXF তৈরি হচ্ছে..."):
                         file_base_name = getattr(uploaded_file, 'name', 'Snapshot.jpg')
-                        output_filename = f"Smooth_{os.path.splitext(file_base_name)[0]}.dxf"
+                        output_filename = f"Live_Smooth_{os.path.splitext(file_base_name)[0]}.dxf"
                         
-                        valid_lines = export_smooth_dxf(st.session_state["contours"], output_filename, smoothness_factor=smoothness)
+                        valid_lines = export_smooth_dxf(final_contours, output_filename)
 
                         if valid_lines > 0:
                             with open(output_filename, "rb") as file:
                                 st.success(f"🎉 সফলভাবে {valid_lines} টি স্মুথ ভেক্টর কার্ভ তৈরি হয়েছে!")
                                 st.download_button("📥 স্মুথ 3D-রেডি DXF ডাউনলোড করুন", data=file, file_name=output_filename, mime="application/dxf")
                         else:
-                            st.warning("⚠️ কোনো আউটলাইন পাওয়া যায়নি।")
+                            st.warning("⚠️ কোনো আউটলাইন পাওয়া যায়নি। স্লাইডারের ডিটেইলস বাড়িয়ে আবার চেষ্টা করুন।")
